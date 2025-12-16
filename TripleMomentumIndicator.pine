@@ -11,8 +11,8 @@ grp_alerts = "ALERTS"
 filterWithFilterMA = input.bool(false, "Filter alerts with the filter MA", group=grp_alerts)
 filterWithRangeDetector = input.bool(true, "Filter alerts with the range detector", group=grp_alerts)
 showEntryAlerts = input.bool(true, "Show entry alerts", group=grp_alerts)
-showTargetAlerts = input.bool(true, "Show target alerts", group=grp_alerts)
-targetAlertColor = input.color(color.orange, "Target alert color", inline="target_alert", group=grp_alerts)
+showTargetAlerts = input.bool(true, "Show target alerts", inline="target_alert", group=grp_alerts)
+targetAlertColor = input.color(color.orange, "", inline="target_alert", group=grp_alerts)
 regularAlertBullColor = input.color(color.green, "Regular alerts", inline="regular", group=grp_alerts)
 regularAlertBearColor = input.color(color.red, "", inline="regular", group=grp_alerts)
 riskierAlertBullColor = input.color(color.lime, "Riskier alerts", inline="riskier", group=grp_alerts)
@@ -28,7 +28,7 @@ fastMASource = input.source(close, "Quelle", group=grp_fast)
 fastMALength = input.int(10, "Länge", minval=1, group=grp_fast)
 fastMAPlot = input.bool(true, "Plot", inline="fast_plot", group=grp_fast)
 fastMAColor = input.color(color.red, "", inline="fast_plot", group=grp_fast)
-fastMAWidth = input.int(1, "", inline="fast_plot", group=grp_fast)
+fastMAWidth = input.int(1, "", inline="fast_plot", minval=1, maxval=5, group=grp_fast)
 
 // ==========================================
 // SLOW MA SETTINGS
@@ -39,7 +39,7 @@ slowMASource = input.source(close, "Quelle", group=grp_slow)
 slowMALength = input.int(30, "Länge", minval=1, group=grp_slow)
 slowMAPlot = input.bool(true, "Plot", inline="slow_plot", group=grp_slow)
 slowMAColor = input.color(color.green, "", inline="slow_plot", group=grp_slow)
-slowMAWidth = input.int(1, "", inline="slow_plot", group=grp_slow)
+slowMAWidth = input.int(1, "", inline="slow_plot", minval=1, maxval=5, group=grp_slow)
 
 // ==========================================
 // FILTER MA SETTINGS
@@ -50,7 +50,7 @@ filterMASource = input.source(open, "Quelle", group=grp_filter)
 filterMALength = input.int(200, "Länge", minval=1, group=grp_filter)
 filterMAPlot = input.bool(true, "Plot", inline="filter_plot", group=grp_filter)
 filterMAColor = input.color(color.gray, "", inline="filter_plot", group=grp_filter)
-filterMAWidth = input.int(1, "", inline="filter_plot", group=grp_filter)
+filterMAWidth = input.int(1, "", inline="filter_plot", minval=1, maxval=5, group=grp_filter)
 fillEnabled = input.bool(false, "Füllen", group=grp_filter)
 
 // ==========================================
@@ -62,8 +62,8 @@ deleteLabelsOnceHit = input.bool(true, "Delete labels once hit", inline="del_lab
 deleteOldLines = input.bool(false, "Delete old lines", inline="del_lines", group=grp_targets)
 deleteLinesOnceHit = input.bool(false, "Delete lines once hit", inline="del_lines", group=grp_targets)
 lineStyle = input.string("Gestrichelt", "Line style", options=["Durchgezogen", "Gestrichelt", "Gepunktet"], group=grp_targets)
-labelSize = input.string("Normal", "Label size", options=["Klein", "Normal", "Groß"], group=grp_targets)
-includePrice = input.bool(true, "Include price", group=grp_targets)
+labelSize = input.string("Normal", "Label size", options=["Klein", "Normal", "Groß"], inline="label_opts", group=grp_targets)
+includePrice = input.bool(true, "Include price", inline="label_opts", group=grp_targets)
 labelOffset = input.int(10, "Offset", group=grp_targets)
 entryColor = input.color(color.gray, "Entry Color", group=grp_targets)
 
@@ -105,11 +105,11 @@ breakevenMoveType = input.string("Entry", "", options=["Entry", "ATR", "Prozent"
 grp_range = "RANGE DETECTOR"
 rangeDetectorEnabled = input.bool(true, "Enable Range Detector", group=grp_range)
 rangeAtrPeriod = input.int(14, "ATR Period", group=grp_range)
-rangeAtrMultiplier = input.float(1.5, "ATR Multiplier", group=grp_range)
+rangeAtrMultiplier = input.float(1.5, "ATR Multiplier", step=0.1, group=grp_range)
 rangeLookback = input.int(20, "Lookback Period", group=grp_range)
 
 // ==========================================
-// MA CALCULATION FUNCTIONS
+// MA CALCULATION FUNCTION
 // ==========================================
 calcMA(src, len, maType) =>
     switch maType
@@ -129,7 +129,7 @@ slowMA = calcMA(slowMASource, slowMALength, slowMAType)
 filterMA = calcMA(filterMASource, filterMALength, filterMAType)
 
 // ==========================================
-// LINE STYLE HELPER
+// HELPER FUNCTIONS
 // ==========================================
 getLineStyle() =>
     switch lineStyle
@@ -138,9 +138,6 @@ getLineStyle() =>
         "Gepunktet" => line.style_dotted
         => line.style_dashed
 
-// ==========================================
-// LABEL SIZE HELPER
-// ==========================================
 getLabelSize() =>
     switch labelSize
         "Klein" => size.small
@@ -158,7 +155,7 @@ rangeSize = highestHigh - lowestLow
 isInRange = rangeDetectorEnabled ? rangeSize < atrValue * rangeAtrMultiplier : false
 
 // ==========================================
-// CROSSOVER DETECTION
+// CROSSOVER DETECTION - BUY/SELL SIGNALS
 // ==========================================
 bullishCross = ta.crossover(fastMA, slowMA)
 bearishCross = ta.crossunder(fastMA, slowMA)
@@ -168,11 +165,11 @@ filterBullish = not filterWithFilterMA or close > filterMA
 filterBearish = not filterWithFilterMA or close < filterMA
 rangeFilter = not filterWithRangeDetector or not isInRange
 
-// Final signals
+// Final signals (filtered)
 buySignal = bullishCross and filterBullish and rangeFilter
 sellSignal = bearishCross and filterBearish and rangeFilter
 
-// Riskier signals (without filter)
+// Riskier signals (signals that don't pass all filters)
 riskierBuySignal = bullishCross and not (filterBullish and rangeFilter)
 riskierSellSignal = bearishCross and not (filterBearish and rangeFilter)
 
@@ -199,7 +196,7 @@ calcRRLevel(entryPrice, stopPrice, rrRatio, isLong) =>
     isLong ? entryPrice + (risk * rrRatio) : entryPrice - (risk * rrRatio)
 
 // ==========================================
-// PERSISTENT VARIABLES FOR TRACKING
+// PERSISTENT VARIABLES
 // ==========================================
 var float entryPrice = na
 var float stopLossPrice = na
@@ -209,6 +206,7 @@ var float target3Price = na
 var float beTriggerPrice = na
 var bool isLongTrade = na
 var bool tradeActive = false
+var int entryBarIndex = na
 
 var line entryLine = na
 var line stopLossLine = na
@@ -229,7 +227,7 @@ var box targetBox2 = na
 var box targetBox3 = na
 
 // ==========================================
-// CLEANUP FUNCTION
+// CLEANUP PREVIOUS TRADE
 // ==========================================
 cleanupTrade() =>
     if deleteOldLines
@@ -251,7 +249,7 @@ cleanupTrade() =>
     box.delete(targetBox3)
 
 // ==========================================
-// SIGNAL PROCESSING
+// CREATE TRADE VISUALIZATION
 // ==========================================
 if buySignal or sellSignal
     // Cleanup previous trade
@@ -260,6 +258,7 @@ if buySignal or sellSignal
     isLongTrade := buySignal
     entryPrice := close
     tradeActive := true
+    entryBarIndex := bar_index
     
     // Calculate Stop Loss
     stopLossPrice := calcLevel(entryPrice, isLongTrade, stopLossValue, stopLossType, atr14)
@@ -288,82 +287,68 @@ if buySignal or sellSignal
     else
         beTriggerPrice := calcLevel(entryPrice, isLongTrade, breakevenTrigger, breakevenTriggerType, atr14)
     
-    // Line style
+    // Get styles
     lstyle = getLineStyle()
     lsize = getLabelSize()
     
     // Create Entry Line and Label
-    entryLine := line.new(bar_index, entryPrice, bar_index + labelOffset, entryPrice, color=entryColor, style=lstyle)
-    if includePrice
-        entryLabel := label.new(bar_index + labelOffset, entryPrice, "Entry: " + str.tostring(entryPrice, format.mintick), color=entryColor, textcolor=textColor, style=label.style_label_left, size=lsize)
-    else
-        entryLabel := label.new(bar_index + labelOffset, entryPrice, "Entry", color=entryColor, textcolor=textColor, style=label.style_label_left, size=lsize)
+    entryLine := line.new(bar_index, entryPrice, bar_index + labelOffset, entryPrice, color=entryColor, style=lstyle, width=1)
+    entryLabel := label.new(bar_index + labelOffset, entryPrice, includePrice ? "Entry: " + str.tostring(entryPrice, format.mintick) : "Entry", color=entryColor, textcolor=textColor, style=label.style_label_left, size=lsize)
     
     // Create Stop Loss Line and Label
-    stopLossLine := line.new(bar_index, stopLossPrice, bar_index + labelOffset, stopLossPrice, color=stopLossColor, style=lstyle)
-    if includePrice
-        stopLossLabel := label.new(bar_index + labelOffset, stopLossPrice, "Stop Loss: " + str.tostring(stopLossPrice, format.mintick), color=stopLossColor, textcolor=textColor, style=label.style_label_left, size=lsize)
-    else
-        stopLossLabel := label.new(bar_index + labelOffset, stopLossPrice, "Stop Loss", color=stopLossColor, textcolor=textColor, style=label.style_label_left, size=lsize)
+    stopLossLine := line.new(bar_index, stopLossPrice, bar_index + labelOffset, stopLossPrice, color=stopLossColor, style=lstyle, width=1)
+    stopLossLabel := label.new(bar_index + labelOffset, stopLossPrice, includePrice ? "Stop Loss: " + str.tostring(stopLossPrice, format.mintick) : "Stop Loss", color=stopLossColor, textcolor=textColor, style=label.style_label_left, size=lsize)
     
     // Create Target Lines and Labels
     if target1Enabled
-        target1Line := line.new(bar_index, target1Price, bar_index + labelOffset, target1Price, color=target1Color, style=lstyle)
-        if includePrice
-            target1Label := label.new(bar_index + labelOffset, target1Price, "Target 1: " + str.tostring(target1Price, format.mintick), color=target1Color, textcolor=textColor, style=label.style_label_left, size=lsize)
-        else
-            target1Label := label.new(bar_index + labelOffset, target1Price, "Target 1", color=target1Color, textcolor=textColor, style=label.style_label_left, size=lsize)
+        target1Line := line.new(bar_index, target1Price, bar_index + labelOffset, target1Price, color=target1Color, style=lstyle, width=1)
+        target1Label := label.new(bar_index + labelOffset, target1Price, includePrice ? "Target 1: " + str.tostring(target1Price, format.mintick) : "Target 1", color=target1Color, textcolor=textColor, style=label.style_label_left, size=lsize)
     
     if target2Enabled
-        target2Line := line.new(bar_index, target2Price, bar_index + labelOffset, target2Price, color=target2Color, style=lstyle)
-        if includePrice
-            target2Label := label.new(bar_index + labelOffset, target2Price, "Target 2: " + str.tostring(target2Price, format.mintick), color=target2Color, textcolor=textColor, style=label.style_label_left, size=lsize)
-        else
-            target2Label := label.new(bar_index + labelOffset, target2Price, "Target 2", color=target2Color, textcolor=textColor, style=label.style_label_left, size=lsize)
+        target2Line := line.new(bar_index, target2Price, bar_index + labelOffset, target2Price, color=target2Color, style=lstyle, width=1)
+        target2Label := label.new(bar_index + labelOffset, target2Price, includePrice ? "Target 2: " + str.tostring(target2Price, format.mintick) : "Target 2", color=target2Color, textcolor=textColor, style=label.style_label_left, size=lsize)
     
     if target3Enabled
-        target3Line := line.new(bar_index, target3Price, bar_index + labelOffset, target3Price, color=target3Color, style=lstyle)
-        if includePrice
-            target3Label := label.new(bar_index + labelOffset, target3Price, "Target 3: " + str.tostring(target3Price, format.mintick), color=target3Color, textcolor=textColor, style=label.style_label_left, size=lsize)
-        else
-            target3Label := label.new(bar_index + labelOffset, target3Price, "Target 3", color=target3Color, textcolor=textColor, style=label.style_label_left, size=lsize)
+        target3Line := line.new(bar_index, target3Price, bar_index + labelOffset, target3Price, color=target3Color, style=lstyle, width=1)
+        target3Label := label.new(bar_index + labelOffset, target3Price, includePrice ? "Target 3: " + str.tostring(target3Price, format.mintick) : "Target 3", color=target3Color, textcolor=textColor, style=label.style_label_left, size=lsize)
     
     // Create Breakeven Trigger Line and Label
     if breakevenEnabled
-        beTriggerLine := line.new(bar_index, beTriggerPrice, bar_index + labelOffset, beTriggerPrice, color=breakevenTriggerColor, style=lstyle)
-        if includePrice
-            beTriggerLabel := label.new(bar_index + labelOffset, beTriggerPrice, "BE Trigger: " + str.tostring(beTriggerPrice, format.mintick), color=breakevenTriggerColor, textcolor=textColor, style=label.style_label_left, size=lsize)
-        else
-            beTriggerLabel := label.new(bar_index + labelOffset, beTriggerPrice, "BE Trigger", color=breakevenTriggerColor, textcolor=textColor, style=label.style_label_left, size=lsize)
+        beTriggerLine := line.new(bar_index, beTriggerPrice, bar_index + labelOffset, beTriggerPrice, color=breakevenTriggerColor, style=lstyle, width=1)
+        beTriggerLabel := label.new(bar_index + labelOffset, beTriggerPrice, includePrice ? "BE Trigger: " + str.tostring(beTriggerPrice, format.mintick) : "BE Trigger", color=breakevenTriggerColor, textcolor=textColor, style=label.style_label_left, size=lsize)
     
-    // Create Target Boxes (filled areas)
-    if fillEnabled or true  // Always create boxes for visual representation like in screenshot
-        boxColor = color.new(target1Color, 80)
-        if isLongTrade
-            if target1Enabled
-                targetBox1 := box.new(bar_index, entryPrice, bar_index + labelOffset, target1Price, border_color=color.new(target1Color, 100), bgcolor=boxColor)
-            if target2Enabled and target1Enabled
-                targetBox2 := box.new(bar_index, target1Price, bar_index + labelOffset, target2Price, border_color=color.new(target2Color, 100), bgcolor=color.new(target2Color, 85))
-            if target3Enabled and target2Enabled
-                targetBox3 := box.new(bar_index, target2Price, bar_index + labelOffset, target3Price, border_color=color.new(target3Color, 100), bgcolor=color.new(target3Color, 90))
-        else
-            if target1Enabled
-                targetBox1 := box.new(bar_index, target1Price, bar_index + labelOffset, entryPrice, border_color=color.new(target1Color, 100), bgcolor=boxColor)
-            if target2Enabled and target1Enabled
-                targetBox2 := box.new(bar_index, target2Price, bar_index + labelOffset, target1Price, border_color=color.new(target2Color, 100), bgcolor=color.new(target2Color, 85))
-            if target3Enabled and target2Enabled
-                targetBox3 := box.new(bar_index, target3Price, bar_index + labelOffset, target2Price, border_color=color.new(target3Color, 100), bgcolor=color.new(target3Color, 90))
+    // Create Target Boxes (filled areas between levels)
+    boxColor1 = color.new(target1Color, 80)
+    boxColor2 = color.new(target2Color, 85)
+    boxColor3 = color.new(target3Color, 90)
+    
+    if isLongTrade
+        if target1Enabled
+            targetBox1 := box.new(bar_index, entryPrice, bar_index + labelOffset, target1Price, border_color=color.new(target1Color, 100), bgcolor=boxColor1)
+        if target2Enabled and target1Enabled
+            targetBox2 := box.new(bar_index, target1Price, bar_index + labelOffset, target2Price, border_color=color.new(target2Color, 100), bgcolor=boxColor2)
+        if target3Enabled and target2Enabled
+            targetBox3 := box.new(bar_index, target2Price, bar_index + labelOffset, target3Price, border_color=color.new(target3Color, 100), bgcolor=boxColor3)
+    else
+        if target1Enabled
+            targetBox1 := box.new(bar_index, target1Price, bar_index + labelOffset, entryPrice, border_color=color.new(target1Color, 100), bgcolor=boxColor1)
+        if target2Enabled and target1Enabled
+            targetBox2 := box.new(bar_index, target2Price, bar_index + labelOffset, target1Price, border_color=color.new(target2Color, 100), bgcolor=boxColor2)
+        if target3Enabled and target2Enabled
+            targetBox3 := box.new(bar_index, target3Price, bar_index + labelOffset, target2Price, border_color=color.new(target3Color, 100), bgcolor=boxColor3)
 
 // ==========================================
 // CHECK FOR TARGET/STOP HITS
 // ==========================================
-if tradeActive
+if tradeActive and bar_index > entryBarIndex
     // Check Stop Loss Hit
     stopHit = isLongTrade ? low <= stopLossPrice : high >= stopLossPrice
-    if stopHit and deleteLinesOnceHit
-        line.delete(stopLossLine)
-    if stopHit and deleteLabelsOnceHit
-        label.delete(stopLossLabel)
+    if stopHit
+        if deleteLinesOnceHit
+            line.delete(stopLossLine)
+        if deleteLabelsOnceHit
+            label.delete(stopLossLabel)
+        tradeActive := false
     
     // Check Target 1 Hit
     t1Hit = isLongTrade ? high >= target1Price : low <= target1Price
@@ -372,6 +357,7 @@ if tradeActive
             line.delete(target1Line)
         if deleteLabelsOnceHit
             label.delete(target1Label)
+        box.delete(targetBox1)
     
     // Check Target 2 Hit
     t2Hit = isLongTrade ? high >= target2Price : low <= target2Price
@@ -380,6 +366,7 @@ if tradeActive
             line.delete(target2Line)
         if deleteLabelsOnceHit
             label.delete(target2Label)
+        box.delete(targetBox2)
     
     // Check Target 3 Hit
     t3Hit = isLongTrade ? high >= target3Price : low <= target3Price
@@ -388,6 +375,8 @@ if tradeActive
             line.delete(target3Line)
         if deleteLabelsOnceHit
             label.delete(target3Label)
+        box.delete(targetBox3)
+        tradeActive := false
     
     // Check Breakeven Trigger Hit
     beHit = isLongTrade ? high >= beTriggerPrice : low <= beTriggerPrice
@@ -401,6 +390,13 @@ if tradeActive
             stopLossPrice := entryPrice + breakevenMove
         else
             stopLossPrice := calcLevel(entryPrice, isLongTrade, breakevenMove, breakevenMoveType, atr14)
+        // Update stop loss line position
+        line.set_y1(stopLossLine, stopLossPrice)
+        line.set_y2(stopLossLine, stopLossPrice)
+        line.set_color(stopLossLine, stopLossHitColor)
+        label.set_y(stopLossLabel, stopLossPrice)
+        label.set_text(stopLossLabel, includePrice ? "Stop Loss: " + str.tostring(stopLossPrice, format.mintick) : "Stop Loss")
+        label.set_color(stopLossLabel, stopLossHitColor)
 
 // ==========================================
 // PLOT MOVING AVERAGES
@@ -410,48 +406,48 @@ plot(slowMAPlot ? slowMA : na, "Slow MA", color=slowMAColor, linewidth=slowMAWid
 plot(filterMAPlot ? filterMA : na, "Filter MA", color=filterMAColor, linewidth=filterMAWidth)
 
 // Fill between price and filter MA
-fillColor = fillEnabled ? (close > filterMA ? color.new(color.green, 90) : color.new(color.red, 90)) : na
+fillColorUp = color.new(color.green, 90)
+fillColorDown = color.new(color.red, 90)
 p1 = plot(fillEnabled ? filterMA : na, display=display.none)
 p2 = plot(fillEnabled ? close : na, display=display.none)
-fill(p1, p2, color=fillColor)
+fill(p1, p2, color=fillEnabled ? (close > filterMA ? fillColorUp : fillColorDown) : na)
 
 // ==========================================
-// PLOT SIGNALS
+// PLOT BUY/SELL SIGNALS
 // ==========================================
-// Entry Labels
 plotshape(showEntryAlerts and buySignal, "Buy Signal", shape.labelup, location.belowbar, regularAlertBullColor, text="Buy", textcolor=textColor, size=size.normal)
 plotshape(showEntryAlerts and sellSignal, "Sell Signal", shape.labeldown, location.abovebar, regularAlertBearColor, text="Short", textcolor=textColor, size=size.normal)
 
-// Riskier Entry Labels
-plotshape(showEntryAlerts and riskierBuySignal, "Riskier Buy Signal", shape.labelup, location.belowbar, riskierAlertBullColor, text="Buy*", textcolor=textColor, size=size.small)
-plotshape(showEntryAlerts and riskierSellSignal, "Riskier Sell Signal", shape.labeldown, location.abovebar, riskierAlertBearColor, text="Short*", textcolor=textColor, size=size.small)
+// Riskier signals (filtered out by MA or range)
+plotshape(showEntryAlerts and riskierBuySignal, "Riskier Buy", shape.labelup, location.belowbar, riskierAlertBullColor, text="Buy*", textcolor=textColor, size=size.small)
+plotshape(showEntryAlerts and riskierSellSignal, "Riskier Sell", shape.labeldown, location.abovebar, riskierAlertBearColor, text="Short*", textcolor=textColor, size=size.small)
 
 // ==========================================
 // ALERTS
 // ==========================================
-alertcondition(buySignal, "Buy Signal", "Triple Momentum: Buy Signal")
-alertcondition(sellSignal, "Sell Signal", "Triple Momentum: Sell Signal")
-alertcondition(buySignal or sellSignal, "Any Signal", "Triple Momentum: Entry Signal")
-alertcondition(riskierBuySignal, "Riskier Buy Signal", "Triple Momentum: Riskier Buy Signal")
-alertcondition(riskierSellSignal, "Riskier Sell Signal", "Triple Momentum: Riskier Sell Signal")
+alertcondition(buySignal, "Buy Signal", "Triple Momentum: BUY Signal")
+alertcondition(sellSignal, "Sell Signal", "Triple Momentum: SELL Signal")
+alertcondition(buySignal or sellSignal, "Any Entry Signal", "Triple Momentum: Entry Signal")
+alertcondition(riskierBuySignal, "Riskier Buy", "Triple Momentum: Riskier Buy Signal")
+alertcondition(riskierSellSignal, "Riskier Sell", "Triple Momentum: Riskier Sell Signal")
 
-// Target Alerts
-if showTargetAlerts and tradeActive
+// Target/Stop Alerts
+if showTargetAlerts and tradeActive and bar_index > entryBarIndex
     if isLongTrade
-        if high >= target1Price and high[1] < target1Price
+        if high >= target1Price and high[1] < target1Price and target1Enabled
             alert("Target 1 erreicht: " + str.tostring(target1Price, format.mintick), alert.freq_once_per_bar)
-        if high >= target2Price and high[1] < target2Price
+        if high >= target2Price and high[1] < target2Price and target2Enabled
             alert("Target 2 erreicht: " + str.tostring(target2Price, format.mintick), alert.freq_once_per_bar)
-        if high >= target3Price and high[1] < target3Price
+        if high >= target3Price and high[1] < target3Price and target3Enabled
             alert("Target 3 erreicht: " + str.tostring(target3Price, format.mintick), alert.freq_once_per_bar)
         if low <= stopLossPrice and low[1] > stopLossPrice
             alert("Stop Loss getroffen: " + str.tostring(stopLossPrice, format.mintick), alert.freq_once_per_bar)
     else
-        if low <= target1Price and low[1] > target1Price
+        if low <= target1Price and low[1] > target1Price and target1Enabled
             alert("Target 1 erreicht: " + str.tostring(target1Price, format.mintick), alert.freq_once_per_bar)
-        if low <= target2Price and low[1] > target2Price
+        if low <= target2Price and low[1] > target2Price and target2Enabled
             alert("Target 2 erreicht: " + str.tostring(target2Price, format.mintick), alert.freq_once_per_bar)
-        if low <= target3Price and low[1] > target3Price
+        if low <= target3Price and low[1] > target3Price and target3Enabled
             alert("Target 3 erreicht: " + str.tostring(target3Price, format.mintick), alert.freq_once_per_bar)
         if high >= stopLossPrice and high[1] < stopLossPrice
             alert("Stop Loss getroffen: " + str.tostring(stopLossPrice, format.mintick), alert.freq_once_per_bar)
@@ -459,18 +455,20 @@ if showTargetAlerts and tradeActive
 // ==========================================
 // INFO TABLE
 // ==========================================
-var table infoTable = table.new(position.top_right, 2, 6, bgcolor=color.new(color.black, 80), border_width=1)
+var table infoTable = table.new(position.top_right, 2, 7, bgcolor=color.new(color.black, 80), border_width=1)
 if barstate.islast
-    table.cell(infoTable, 0, 0, "Fast MA", text_color=fastMAColor, text_size=size.small)
+    table.cell(infoTable, 0, 0, "Fast MA (" + str.tostring(fastMALength) + ")", text_color=fastMAColor, text_size=size.small)
     table.cell(infoTable, 1, 0, str.tostring(fastMA, format.mintick), text_color=fastMAColor, text_size=size.small)
-    table.cell(infoTable, 0, 1, "Slow MA", text_color=slowMAColor, text_size=size.small)
+    table.cell(infoTable, 0, 1, "Slow MA (" + str.tostring(slowMALength) + ")", text_color=slowMAColor, text_size=size.small)
     table.cell(infoTable, 1, 1, str.tostring(slowMA, format.mintick), text_color=slowMAColor, text_size=size.small)
-    table.cell(infoTable, 0, 2, "Filter MA", text_color=filterMAColor, text_size=size.small)
+    table.cell(infoTable, 0, 2, "Filter MA (" + str.tostring(filterMALength) + ")", text_color=filterMAColor, text_size=size.small)
     table.cell(infoTable, 1, 2, str.tostring(filterMA, format.mintick), text_color=filterMAColor, text_size=size.small)
-    table.cell(infoTable, 0, 3, "ATR", text_color=color.white, text_size=size.small)
+    table.cell(infoTable, 0, 3, "ATR (14)", text_color=color.white, text_size=size.small)
     table.cell(infoTable, 1, 3, str.tostring(atr14, format.mintick), text_color=color.white, text_size=size.small)
-    table.cell(infoTable, 0, 4, "In Range", text_color=color.white, text_size=size.small)
-    table.cell(infoTable, 1, 4, isInRange ? "Ja" : "Nein", text_color=isInRange ? color.orange : color.green, text_size=size.small)
+    table.cell(infoTable, 0, 4, "Range", text_color=color.white, text_size=size.small)
+    table.cell(infoTable, 1, 4, isInRange ? "Ja ⚠" : "Nein ✓", text_color=isInRange ? color.orange : color.green, text_size=size.small)
+    table.cell(infoTable, 0, 5, "Trend", text_color=color.white, text_size=size.small)
+    table.cell(infoTable, 1, 5, fastMA > slowMA ? "Bullish ▲" : "Bearish ▼", text_color=fastMA > slowMA ? color.green : color.red, text_size=size.small)
     if tradeActive
-        table.cell(infoTable, 0, 5, "Trade", text_color=color.white, text_size=size.small)
-        table.cell(infoTable, 1, 5, isLongTrade ? "Long" : "Short", text_color=isLongTrade ? color.green : color.red, text_size=size.small)
+        table.cell(infoTable, 0, 6, "Position", text_color=color.white, text_size=size.small)
+        table.cell(infoTable, 1, 6, isLongTrade ? "LONG" : "SHORT", text_color=isLongTrade ? color.green : color.red, text_size=size.small)
