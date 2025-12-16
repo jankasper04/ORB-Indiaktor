@@ -2,7 +2,7 @@
 // © Triple Momentum Strategy
 
 //@version=5
-strategy("Triple Momentum Strategy", overlay=true, initial_capital=10000, default_qty_type=strategy.percent_of_equity, default_qty_value=100, commission_type=strategy.commission.percent, commission_value=0.1, slippage=1, pyramiding=0, calc_on_every_tick=false)
+strategy("Triple Momentum Strategy", overlay=true, initial_capital=10000, default_qty_type=strategy.percent_of_equity, default_qty_value=100, commission_type=strategy.commission.percent, commission_value=0.1, slippage=1, pyramiding=0, calc_on_every_tick=true)
 
 // ==========================================
 // STRATEGY SETTINGS
@@ -11,12 +11,6 @@ grp_strategy = "STRATEGY"
 startDate = input.time(timestamp("2020-01-01"), "Start Date", group=grp_strategy)
 endDate = input.time(timestamp("2030-12-31"), "End Date", group=grp_strategy)
 tradeDirection = input.string("Both", "Trade Direction", options=["Both", "Long Only", "Short Only"], group=grp_strategy)
-useStopLoss = input.bool(true, "Use Stop Loss", group=grp_strategy)
-useTakeProfit = input.bool(true, "Use Take Profit", group=grp_strategy)
-tpTarget = input.string("Target 2", "Take Profit Target", options=["Target 1", "Target 2", "Target 3"], group=grp_strategy)
-useBreakeven = input.bool(true, "Use Breakeven", group=grp_strategy)
-useTrailingStop = input.bool(false, "Use Trailing Stop", group=grp_strategy)
-trailingStopPercent = input.float(1.0, "Trailing Stop %", step=0.1, group=grp_strategy)
 
 // ==========================================
 // ALERTS SETTINGS
@@ -68,53 +62,34 @@ filterMAWidth = input.int(1, "", inline="filter_plot", minval=1, maxval=5, group
 fillEnabled = input.bool(false, "Füllen", group=grp_filter)
 
 // ==========================================
-// TARGETS SETTINGS
+// STOP LOSS & TAKE PROFIT SETTINGS
 // ==========================================
-grp_targets = "TARGETS"
-lineStyle = input.string("Gestrichelt", "Line style", options=["Durchgezogen", "Gestrichelt", "Gepunktet"], group=grp_targets)
-labelSize = input.string("Normal", "Label size", options=["Klein", "Normal", "Groß"], inline="label_opts", group=grp_targets)
-includePrice = input.bool(true, "Include price", inline="label_opts", group=grp_targets)
-labelOffset = input.int(10, "Offset", group=grp_targets)
-entryColor = input.color(color.gray, "Entry Color", group=grp_targets)
+grp_sltp = "STOP LOSS & TAKE PROFIT"
+stopLossATR = input.float(1.0, "Stop Loss (ATR Multiplier)", minval=0.1, step=0.1, group=grp_sltp)
+atrPeriod = input.int(14, "ATR Period", minval=1, group=grp_sltp)
+takeProfitRR = input.float(2.0, "Take Profit (R:R)", minval=0.5, step=0.5, group=grp_sltp)
+useBreakeven = input.bool(true, "Use Breakeven", group=grp_sltp)
+breakevenTriggerRR = input.float(1.0, "Breakeven Trigger (R:R)", minval=0.5, step=0.5, group=grp_sltp)
 
-// Target 1
-target1Enabled = input.bool(true, "Target 1", inline="t1", group=grp_targets)
-target1Value = input.float(1.0, "", inline="t1", group=grp_targets)
-target1Type = input.string("R:R", "", options=["R:R", "ATR", "Prozent", "Punkte"], inline="t1", group=grp_targets)
-target1Color = input.color(color.teal, "", inline="t1", group=grp_targets)
-
-// Target 2
-target2Enabled = input.bool(true, "Target 2", inline="t2", group=grp_targets)
-target2Value = input.float(2.0, "", inline="t2", group=grp_targets)
-target2Type = input.string("R:R", "", options=["R:R", "ATR", "Prozent", "Punkte"], inline="t2", group=grp_targets)
-target2Color = input.color(color.teal, "", inline="t2", group=grp_targets)
-
-// Target 3
-target3Enabled = input.bool(true, "Target 3", inline="t3", group=grp_targets)
-target3Value = input.float(3.0, "", inline="t3", group=grp_targets)
-target3Type = input.string("R:R", "", options=["R:R", "ATR", "Prozent", "Punkte"], inline="t3", group=grp_targets)
-target3Color = input.color(color.teal, "", inline="t3", group=grp_targets)
-
-// Stop Loss
-stopLossValue = input.float(1.0, "Stop Loss", inline="sl", group=grp_targets)
-stopLossType = input.string("ATR", "", options=["ATR", "Prozent", "Punkte"], inline="sl", group=grp_targets)
-stopLossColor = input.color(color.red, "", inline="sl", group=grp_targets)
-stopLossHitColor = input.color(color.teal, "", inline="sl", group=grp_targets)
-
-// Breakeven
-breakevenEnabled = input.bool(true, "Breakeven", group=grp_targets)
-breakevenTrigger = input.float(1.0, "Trigger:", inline="be_trigger", group=grp_targets)
-breakevenTriggerType = input.string("R:R", "", options=["R:R", "ATR", "Prozent", "Punkte"], inline="be_trigger", group=grp_targets)
-breakevenTriggerColor = input.color(color.orange, "", inline="be_trigger", group=grp_targets)
-breakevenMove = input.float(0.0, "Move:", inline="be_move", group=grp_targets)
-breakevenMoveType = input.string("Entry", "", options=["Entry", "ATR", "Prozent", "Punkte"], inline="be_move", group=grp_targets)
+// ==========================================
+// VISUAL SETTINGS
+// ==========================================
+grp_visual = "VISUALS"
+showSLTPLines = input.bool(true, "Show SL/TP Lines", group=grp_visual)
+lineStyle = input.string("Gestrichelt", "Line style", options=["Durchgezogen", "Gestrichelt", "Gepunktet"], group=grp_visual)
+labelSize = input.string("Normal", "Label size", options=["Klein", "Normal", "Groß"], group=grp_visual)
+includePrice = input.bool(true, "Include price in labels", group=grp_visual)
+labelOffset = input.int(10, "Label Offset", group=grp_visual)
+entryColor = input.color(color.blue, "Entry Color", group=grp_visual)
+stopLossColor = input.color(color.red, "Stop Loss Color", group=grp_visual)
+takeProfitColor = input.color(color.teal, "Take Profit Color", group=grp_visual)
+breakevenColor = input.color(color.orange, "Breakeven Color", group=grp_visual)
 
 // ==========================================
 // RANGE DETECTOR SETTINGS
 // ==========================================
 grp_range = "RANGE DETECTOR"
 rangeDetectorEnabled = input.bool(true, "Enable Range Detector", group=grp_range)
-rangeAtrPeriod = input.int(14, "ATR Period", group=grp_range)
 rangeAtrMultiplier = input.float(1.5, "ATR Multiplier", step=0.1, group=grp_range)
 rangeLookback = input.int(20, "Lookback Period", group=grp_range)
 
@@ -156,13 +131,17 @@ getLabelSize() =>
         => size.normal
 
 // ==========================================
+// ATR CALCULATION
+// ==========================================
+atr = ta.atr(atrPeriod)
+
+// ==========================================
 // RANGE DETECTION
 // ==========================================
-atrValue = ta.atr(rangeAtrPeriod)
 highestHigh = ta.highest(high, rangeLookback)
 lowestLow = ta.lowest(low, rangeLookback)
 rangeSize = highestHigh - lowestLow
-isInRange = rangeDetectorEnabled ? rangeSize < atrValue * rangeAtrMultiplier : false
+isInRange = rangeDetectorEnabled ? rangeSize < atr * rangeAtrMultiplier : false
 
 // ==========================================
 // CROSSOVER DETECTION - BUY/SELL SIGNALS
@@ -186,289 +165,197 @@ allowShort = tradeDirection == "Both" or tradeDirection == "Short Only"
 buySignal = bullishCross and filterBullish and rangeFilter and inDateRange and allowLong
 sellSignal = bearishCross and filterBearish and rangeFilter and inDateRange and allowShort
 
-// Riskier signals
-riskierBuySignal = bullishCross and not (filterBullish and rangeFilter) and inDateRange and allowLong
-riskierSellSignal = bearishCross and not (filterBearish and rangeFilter) and inDateRange and allowShort
-
 // ==========================================
-// ATR FOR TARGETS/STOPS
-// ==========================================
-atr14 = ta.atr(14)
-
-// ==========================================
-// CALCULATE TARGET/STOP LEVELS
-// ==========================================
-calcLevel(entryPrice, isLong, value, levelType, atrVal) =>
-    float result = entryPrice
-    if levelType == "ATR"
-        result := isLong ? entryPrice + (value * atrVal) : entryPrice - (value * atrVal)
-    else if levelType == "Prozent"
-        result := isLong ? entryPrice * (1 + value / 100) : entryPrice * (1 - value / 100)
-    else if levelType == "Punkte"
-        result := isLong ? entryPrice + value : entryPrice - value
-    result
-
-calcRRLevel(entryPrice, stopPrice, rrRatio, isLong) =>
-    float risk = math.abs(entryPrice - stopPrice)
-    isLong ? entryPrice + (risk * rrRatio) : entryPrice - (risk * rrRatio)
-
-// ==========================================
-// PERSISTENT VARIABLES
+// PERSISTENT VARIABLES FOR TRADE MANAGEMENT
 // ==========================================
 var float entryPrice = na
 var float stopLossPrice = na
-var float target1Price = na
-var float target2Price = na
-var float target3Price = na
-var float beTriggerPrice = na
-var float currentStopLoss = na
-var bool isLongTrade = na
-var bool breakevenTriggered = false
-var int entryBarIndex = na
+var float takeProfitPrice = na
+var float breakevenTriggerPrice = na
+var float riskAmount = na
+var bool isLong = na
+var bool breakevenActivated = false
+var int entryBar = na
 
+// Lines and Labels
 var line entryLine = na
-var line stopLossLine = na
-var line target1Line = na
-var line target2Line = na
-var line target3Line = na
+var line slLine = na
+var line tpLine = na
 var line beTriggerLine = na
-
 var label entryLabel = na
-var label stopLossLabel = na
-var label target1Label = na
-var label target2Label = na
-var label target3Label = na
+var label slLabel = na
+var label tpLabel = na
 var label beTriggerLabel = na
-
-var box targetBox1 = na
-var box targetBox2 = na
-var box targetBox3 = na
+var box tpBox = na
 
 // ==========================================
-// STRATEGY LOGIC
+// CLEANUP FUNCTION
 // ==========================================
+cleanupDrawings() =>
+    line.delete(entryLine)
+    line.delete(slLine)
+    line.delete(tpLine)
+    line.delete(beTriggerLine)
+    label.delete(entryLabel)
+    label.delete(slLabel)
+    label.delete(tpLabel)
+    label.delete(beTriggerLabel)
+    box.delete(tpBox)
 
-// Close opposite positions and enter new ones
-if buySignal
-    // Close any short position
+// ==========================================
+// LONG ENTRY
+// ==========================================
+if buySignal and strategy.position_size == 0
+    // Close any existing short
     if strategy.position_size < 0
-        strategy.close("Short", comment="Close Short")
+        strategy.close("Short")
     
     // Calculate levels
     entryPrice := close
-    isLongTrade := true
-    breakevenTriggered := false
-    entryBarIndex := bar_index
+    isLong := true
+    breakevenActivated := false
+    entryBar := bar_index
     
-    // Stop Loss
-    stopLossPrice := calcLevel(entryPrice, true, stopLossValue, stopLossType, atr14)
-    currentStopLoss := stopLossPrice
+    // Stop Loss = Entry - (ATR * Multiplier)
+    riskAmount := atr * stopLossATR
+    stopLossPrice := entryPrice - riskAmount
     
-    // Targets
-    if target1Type == "R:R"
-        target1Price := calcRRLevel(entryPrice, stopLossPrice, target1Value, true)
-    else
-        target1Price := calcLevel(entryPrice, true, target1Value, target1Type, atr14)
+    // Take Profit = Entry + (Risk * R:R)
+    takeProfitPrice := entryPrice + (riskAmount * takeProfitRR)
     
-    if target2Type == "R:R"
-        target2Price := calcRRLevel(entryPrice, stopLossPrice, target2Value, true)
-    else
-        target2Price := calcLevel(entryPrice, true, target2Value, target2Type, atr14)
-    
-    if target3Type == "R:R"
-        target3Price := calcRRLevel(entryPrice, stopLossPrice, target3Value, true)
-    else
-        target3Price := calcLevel(entryPrice, true, target3Value, target3Type, atr14)
-    
-    // Breakeven Trigger
-    if breakevenTriggerType == "R:R"
-        beTriggerPrice := calcRRLevel(entryPrice, stopLossPrice, breakevenTrigger, true)
-    else
-        beTriggerPrice := calcLevel(entryPrice, true, breakevenTrigger, breakevenTriggerType, atr14)
-    
-    // Determine take profit price
-    float tpPrice = switch tpTarget
-        "Target 1" => target1Price
-        "Target 2" => target2Price
-        "Target 3" => target3Price
-        => target2Price
+    // Breakeven Trigger = Entry + (Risk * BE R:R)
+    breakevenTriggerPrice := entryPrice + (riskAmount * breakevenTriggerRR)
     
     // Enter Long
-    strategy.entry("Long", strategy.long, comment="Buy")
+    strategy.entry("Long", strategy.long)
+    strategy.exit("Long Exit", "Long", stop=stopLossPrice, limit=takeProfitPrice)
     
-    // Set exits
-    if useStopLoss and useTakeProfit
-        strategy.exit("Long Exit", "Long", stop=stopLossPrice, limit=tpPrice, comment_profit="TP", comment_loss="SL")
-    else if useStopLoss
-        strategy.exit("Long Exit", "Long", stop=stopLossPrice, comment_loss="SL")
-    else if useTakeProfit
-        strategy.exit("Long Exit", "Long", limit=tpPrice, comment_profit="TP")
+    // Draw visuals
+    if showSLTPLines
+        cleanupDrawings()
+        lstyle = getLineStyle()
+        lsize = getLabelSize()
+        
+        // Entry Line
+        entryLine := line.new(bar_index, entryPrice, bar_index + labelOffset, entryPrice, color=entryColor, style=lstyle, width=2)
+        entryLabel := label.new(bar_index + labelOffset, entryPrice, includePrice ? "Entry: " + str.tostring(entryPrice, format.mintick) : "Entry", color=entryColor, textcolor=color.white, style=label.style_label_left, size=lsize)
+        
+        // Stop Loss Line
+        slLine := line.new(bar_index, stopLossPrice, bar_index + labelOffset, stopLossPrice, color=stopLossColor, style=lstyle, width=2)
+        slLabel := label.new(bar_index + labelOffset, stopLossPrice, includePrice ? "Stop Loss: " + str.tostring(stopLossPrice, format.mintick) : "Stop Loss", color=stopLossColor, textcolor=color.white, style=label.style_label_left, size=lsize)
+        
+        // Take Profit Line
+        tpLine := line.new(bar_index, takeProfitPrice, bar_index + labelOffset, takeProfitPrice, color=takeProfitColor, style=lstyle, width=2)
+        tpLabel := label.new(bar_index + labelOffset, takeProfitPrice, includePrice ? "TP (R:R " + str.tostring(takeProfitRR) + "): " + str.tostring(takeProfitPrice, format.mintick) : "TP (R:R " + str.tostring(takeProfitRR) + ")", color=takeProfitColor, textcolor=color.white, style=label.style_label_left, size=lsize)
+        
+        // Breakeven Trigger Line
+        if useBreakeven
+            beTriggerLine := line.new(bar_index, breakevenTriggerPrice, bar_index + labelOffset, breakevenTriggerPrice, color=breakevenColor, style=lstyle, width=1)
+            beTriggerLabel := label.new(bar_index + labelOffset, breakevenTriggerPrice, includePrice ? "BE Trigger: " + str.tostring(breakevenTriggerPrice, format.mintick) : "BE Trigger", color=breakevenColor, textcolor=color.white, style=label.style_label_left, size=lsize)
+        
+        // TP Box
+        tpBox := box.new(bar_index, entryPrice, bar_index + labelOffset, takeProfitPrice, border_color=color.new(takeProfitColor, 70), bgcolor=color.new(takeProfitColor, 85))
 
-if sellSignal
-    // Close any long position
+// ==========================================
+// SHORT ENTRY
+// ==========================================
+if sellSignal and strategy.position_size == 0
+    // Close any existing long
     if strategy.position_size > 0
-        strategy.close("Long", comment="Close Long")
+        strategy.close("Long")
     
     // Calculate levels
     entryPrice := close
-    isLongTrade := false
-    breakevenTriggered := false
-    entryBarIndex := bar_index
+    isLong := false
+    breakevenActivated := false
+    entryBar := bar_index
     
-    // Stop Loss
-    stopLossPrice := calcLevel(entryPrice, false, stopLossValue, stopLossType, atr14)
-    currentStopLoss := stopLossPrice
+    // Stop Loss = Entry + (ATR * Multiplier)
+    riskAmount := atr * stopLossATR
+    stopLossPrice := entryPrice + riskAmount
     
-    // Targets
-    if target1Type == "R:R"
-        target1Price := calcRRLevel(entryPrice, stopLossPrice, target1Value, false)
-    else
-        target1Price := calcLevel(entryPrice, false, target1Value, target1Type, atr14)
+    // Take Profit = Entry - (Risk * R:R)
+    takeProfitPrice := entryPrice - (riskAmount * takeProfitRR)
     
-    if target2Type == "R:R"
-        target2Price := calcRRLevel(entryPrice, stopLossPrice, target2Value, false)
-    else
-        target2Price := calcLevel(entryPrice, false, target2Value, target2Type, atr14)
-    
-    if target3Type == "R:R"
-        target3Price := calcRRLevel(entryPrice, stopLossPrice, target3Value, false)
-    else
-        target3Price := calcLevel(entryPrice, false, target3Value, target3Type, atr14)
-    
-    // Breakeven Trigger
-    if breakevenTriggerType == "R:R"
-        beTriggerPrice := calcRRLevel(entryPrice, stopLossPrice, breakevenTrigger, false)
-    else
-        beTriggerPrice := calcLevel(entryPrice, false, breakevenTrigger, breakevenTriggerType, atr14)
-    
-    // Determine take profit price
-    float tpPrice = switch tpTarget
-        "Target 1" => target1Price
-        "Target 2" => target2Price
-        "Target 3" => target3Price
-        => target2Price
+    // Breakeven Trigger = Entry - (Risk * BE R:R)
+    breakevenTriggerPrice := entryPrice - (riskAmount * breakevenTriggerRR)
     
     // Enter Short
-    strategy.entry("Short", strategy.short, comment="Short")
+    strategy.entry("Short", strategy.short)
+    strategy.exit("Short Exit", "Short", stop=stopLossPrice, limit=takeProfitPrice)
     
-    // Set exits
-    if useStopLoss and useTakeProfit
-        strategy.exit("Short Exit", "Short", stop=stopLossPrice, limit=tpPrice, comment_profit="TP", comment_loss="SL")
-    else if useStopLoss
-        strategy.exit("Short Exit", "Short", stop=stopLossPrice, comment_loss="SL")
-    else if useTakeProfit
-        strategy.exit("Short Exit", "Short", limit=tpPrice, comment_profit="TP")
+    // Draw visuals
+    if showSLTPLines
+        cleanupDrawings()
+        lstyle = getLineStyle()
+        lsize = getLabelSize()
+        
+        // Entry Line
+        entryLine := line.new(bar_index, entryPrice, bar_index + labelOffset, entryPrice, color=entryColor, style=lstyle, width=2)
+        entryLabel := label.new(bar_index + labelOffset, entryPrice, includePrice ? "Entry: " + str.tostring(entryPrice, format.mintick) : "Entry", color=entryColor, textcolor=color.white, style=label.style_label_left, size=lsize)
+        
+        // Stop Loss Line
+        slLine := line.new(bar_index, stopLossPrice, bar_index + labelOffset, stopLossPrice, color=stopLossColor, style=lstyle, width=2)
+        slLabel := label.new(bar_index + labelOffset, stopLossPrice, includePrice ? "Stop Loss: " + str.tostring(stopLossPrice, format.mintick) : "Stop Loss", color=stopLossColor, textcolor=color.white, style=label.style_label_left, size=lsize)
+        
+        // Take Profit Line
+        tpLine := line.new(bar_index, takeProfitPrice, bar_index + labelOffset, takeProfitPrice, color=takeProfitColor, style=lstyle, width=2)
+        tpLabel := label.new(bar_index + labelOffset, takeProfitPrice, includePrice ? "TP (R:R " + str.tostring(takeProfitRR) + "): " + str.tostring(takeProfitPrice, format.mintick) : "TP (R:R " + str.tostring(takeProfitRR) + ")", color=takeProfitColor, textcolor=color.white, style=label.style_label_left, size=lsize)
+        
+        // Breakeven Trigger Line
+        if useBreakeven
+            beTriggerLine := line.new(bar_index, breakevenTriggerPrice, bar_index + labelOffset, breakevenTriggerPrice, color=breakevenColor, style=lstyle, width=1)
+            beTriggerLabel := label.new(bar_index + labelOffset, breakevenTriggerPrice, includePrice ? "BE Trigger: " + str.tostring(breakevenTriggerPrice, format.mintick) : "BE Trigger", color=breakevenColor, textcolor=color.white, style=label.style_label_left, size=lsize)
+        
+        // TP Box
+        tpBox := box.new(bar_index, takeProfitPrice, bar_index + labelOffset, entryPrice, border_color=color.new(takeProfitColor, 70), bgcolor=color.new(takeProfitColor, 85))
 
 // ==========================================
 // BREAKEVEN MANAGEMENT
 // ==========================================
-if useBreakeven and breakevenEnabled and strategy.position_size != 0 and not breakevenTriggered
-    if strategy.position_size > 0 and high >= beTriggerPrice
-        // Move stop to breakeven for long
-        float newStop = breakevenMoveType == "Entry" ? entryPrice + breakevenMove : calcLevel(entryPrice, true, breakevenMove, breakevenMoveType, atr14)
-        currentStopLoss := newStop
-        breakevenTriggered := true
+if useBreakeven and strategy.position_size != 0 and not breakevenActivated
+    // Long: If price reaches BE trigger, move SL to entry
+    if isLong and high >= breakevenTriggerPrice
+        breakevenActivated := true
+        stopLossPrice := entryPrice
+        strategy.exit("Long Exit", "Long", stop=entryPrice, limit=takeProfitPrice)
         
-        float tpPrice = switch tpTarget
-            "Target 1" => target1Price
-            "Target 2" => target2Price
-            "Target 3" => target3Price
-            => target2Price
-        
-        strategy.exit("Long Exit", "Long", stop=newStop, limit=useTakeProfit ? tpPrice : na, comment_profit="TP", comment_loss="BE")
+        // Update SL line
+        if showSLTPLines
+            line.set_y1(slLine, entryPrice)
+            line.set_y2(slLine, entryPrice)
+            line.set_color(slLine, breakevenColor)
+            label.set_y(slLabel, entryPrice)
+            label.set_text(slLabel, includePrice ? "BE: " + str.tostring(entryPrice, format.mintick) : "Breakeven")
+            label.set_color(slLabel, breakevenColor)
+            line.delete(beTriggerLine)
+            label.delete(beTriggerLabel)
     
-    if strategy.position_size < 0 and low <= beTriggerPrice
-        // Move stop to breakeven for short
-        float newStop = breakevenMoveType == "Entry" ? entryPrice - breakevenMove : calcLevel(entryPrice, false, breakevenMove, breakevenMoveType, atr14)
-        currentStopLoss := newStop
-        breakevenTriggered := true
+    // Short: If price reaches BE trigger, move SL to entry
+    if not isLong and low <= breakevenTriggerPrice
+        breakevenActivated := true
+        stopLossPrice := entryPrice
+        strategy.exit("Short Exit", "Short", stop=entryPrice, limit=takeProfitPrice)
         
-        float tpPrice = switch tpTarget
-            "Target 1" => target1Price
-            "Target 2" => target2Price
-            "Target 3" => target3Price
-            => target2Price
-        
-        strategy.exit("Short Exit", "Short", stop=newStop, limit=useTakeProfit ? tpPrice : na, comment_profit="TP", comment_loss="BE")
+        // Update SL line
+        if showSLTPLines
+            line.set_y1(slLine, entryPrice)
+            line.set_y2(slLine, entryPrice)
+            line.set_color(slLine, breakevenColor)
+            label.set_y(slLabel, entryPrice)
+            label.set_text(slLabel, includePrice ? "BE: " + str.tostring(entryPrice, format.mintick) : "Breakeven")
+            label.set_color(slLabel, breakevenColor)
+            line.delete(beTriggerLine)
+            label.delete(beTriggerLabel)
 
 // ==========================================
-// TRAILING STOP
+// CLOSE ON OPPOSITE SIGNAL
 // ==========================================
-if useTrailingStop and strategy.position_size != 0
-    if strategy.position_size > 0
-        strategy.exit("Trailing Long", "Long", trail_price=close * (1 + trailingStopPercent/100), trail_offset=close * trailingStopPercent/100 / syminfo.mintick)
-    if strategy.position_size < 0
-        strategy.exit("Trailing Short", "Short", trail_price=close * (1 - trailingStopPercent/100), trail_offset=close * trailingStopPercent/100 / syminfo.mintick)
+if sellSignal and strategy.position_size > 0
+    strategy.close("Long", comment="Reverse to Short")
 
-// ==========================================
-// VISUALIZATION - LINES AND LABELS
-// ==========================================
-// Clean up old drawings when new trade starts
-if buySignal or sellSignal
-    line.delete(entryLine)
-    line.delete(stopLossLine)
-    line.delete(target1Line)
-    line.delete(target2Line)
-    line.delete(target3Line)
-    line.delete(beTriggerLine)
-    label.delete(entryLabel)
-    label.delete(stopLossLabel)
-    label.delete(target1Label)
-    label.delete(target2Label)
-    label.delete(target3Label)
-    label.delete(beTriggerLabel)
-    box.delete(targetBox1)
-    box.delete(targetBox2)
-    box.delete(targetBox3)
-    
-    lstyle = getLineStyle()
-    lsize = getLabelSize()
-    
-    // Entry
-    entryLine := line.new(bar_index, entryPrice, bar_index + labelOffset, entryPrice, color=entryColor, style=lstyle)
-    entryLabel := label.new(bar_index + labelOffset, entryPrice, includePrice ? "Entry: " + str.tostring(entryPrice, format.mintick) : "Entry", color=entryColor, textcolor=textColor, style=label.style_label_left, size=lsize)
-    
-    // Stop Loss
-    stopLossLine := line.new(bar_index, stopLossPrice, bar_index + labelOffset, stopLossPrice, color=stopLossColor, style=lstyle)
-    stopLossLabel := label.new(bar_index + labelOffset, stopLossPrice, includePrice ? "Stop Loss: " + str.tostring(stopLossPrice, format.mintick) : "Stop Loss", color=stopLossColor, textcolor=textColor, style=label.style_label_left, size=lsize)
-    
-    // Targets
-    if target1Enabled
-        target1Line := line.new(bar_index, target1Price, bar_index + labelOffset, target1Price, color=target1Color, style=lstyle)
-        target1Label := label.new(bar_index + labelOffset, target1Price, includePrice ? "Target 1: " + str.tostring(target1Price, format.mintick) : "Target 1", color=target1Color, textcolor=textColor, style=label.style_label_left, size=lsize)
-    
-    if target2Enabled
-        target2Line := line.new(bar_index, target2Price, bar_index + labelOffset, target2Price, color=target2Color, style=lstyle)
-        target2Label := label.new(bar_index + labelOffset, target2Price, includePrice ? "Target 2: " + str.tostring(target2Price, format.mintick) : "Target 2", color=target2Color, textcolor=textColor, style=label.style_label_left, size=lsize)
-    
-    if target3Enabled
-        target3Line := line.new(bar_index, target3Price, bar_index + labelOffset, target3Price, color=target3Color, style=lstyle)
-        target3Label := label.new(bar_index + labelOffset, target3Price, includePrice ? "Target 3: " + str.tostring(target3Price, format.mintick) : "Target 3", color=target3Color, textcolor=textColor, style=label.style_label_left, size=lsize)
-    
-    // Breakeven
-    if breakevenEnabled
-        beTriggerLine := line.new(bar_index, beTriggerPrice, bar_index + labelOffset, beTriggerPrice, color=breakevenTriggerColor, style=lstyle)
-        beTriggerLabel := label.new(bar_index + labelOffset, beTriggerPrice, includePrice ? "BE Trigger: " + str.tostring(beTriggerPrice, format.mintick) : "BE Trigger", color=breakevenTriggerColor, textcolor=textColor, style=label.style_label_left, size=lsize)
-    
-    // Target Boxes
-    boxColor1 = color.new(target1Color, 80)
-    boxColor2 = color.new(target2Color, 85)
-    boxColor3 = color.new(target3Color, 90)
-    
-    if isLongTrade
-        if target1Enabled
-            targetBox1 := box.new(bar_index, entryPrice, bar_index + labelOffset, target1Price, border_color=color.new(target1Color, 100), bgcolor=boxColor1)
-        if target2Enabled and target1Enabled
-            targetBox2 := box.new(bar_index, target1Price, bar_index + labelOffset, target2Price, border_color=color.new(target2Color, 100), bgcolor=boxColor2)
-        if target3Enabled and target2Enabled
-            targetBox3 := box.new(bar_index, target2Price, bar_index + labelOffset, target3Price, border_color=color.new(target3Color, 100), bgcolor=boxColor3)
-    else
-        if target1Enabled
-            targetBox1 := box.new(bar_index, target1Price, bar_index + labelOffset, entryPrice, border_color=color.new(target1Color, 100), bgcolor=boxColor1)
-        if target2Enabled and target1Enabled
-            targetBox2 := box.new(bar_index, target2Price, bar_index + labelOffset, target1Price, border_color=color.new(target2Color, 100), bgcolor=boxColor2)
-        if target3Enabled and target2Enabled
-            targetBox3 := box.new(bar_index, target3Price, bar_index + labelOffset, target2Price, border_color=color.new(target3Color, 100), bgcolor=boxColor3)
+if buySignal and strategy.position_size < 0
+    strategy.close("Short", comment="Reverse to Long")
 
 // ==========================================
 // PLOT MOVING AVERAGES
@@ -489,8 +376,6 @@ fill(p1, p2, color=fillEnabled ? (close > filterMA ? fillColorUp : fillColorDown
 // ==========================================
 plotshape(showEntryAlerts and buySignal, "Buy Signal", shape.labelup, location.belowbar, regularAlertBullColor, text="Buy", textcolor=textColor, size=size.normal)
 plotshape(showEntryAlerts and sellSignal, "Sell Signal", shape.labeldown, location.abovebar, regularAlertBearColor, text="Short", textcolor=textColor, size=size.normal)
-plotshape(showEntryAlerts and riskierBuySignal, "Riskier Buy", shape.labelup, location.belowbar, riskierAlertBullColor, text="Buy*", textcolor=textColor, size=size.small)
-plotshape(showEntryAlerts and riskierSellSignal, "Riskier Sell", shape.labeldown, location.abovebar, riskierAlertBearColor, text="Short*", textcolor=textColor, size=size.small)
 
 // ==========================================
 // BACKGROUND COLOR FOR TREND
@@ -500,29 +385,46 @@ bgcolor(fastMA > slowMA ? color.new(color.green, 95) : color.new(color.red, 95))
 // ==========================================
 // INFO TABLE
 // ==========================================
-var table infoTable = table.new(position.top_right, 2, 10, bgcolor=color.new(color.black, 80), border_width=1)
+var table infoTable = table.new(position.top_right, 2, 12, bgcolor=color.new(color.black, 80), border_width=1)
 if barstate.islast
+    // MA Info
     table.cell(infoTable, 0, 0, "Fast MA (" + str.tostring(fastMALength) + ")", text_color=fastMAColor, text_size=size.small)
     table.cell(infoTable, 1, 0, str.tostring(fastMA, format.mintick), text_color=fastMAColor, text_size=size.small)
     table.cell(infoTable, 0, 1, "Slow MA (" + str.tostring(slowMALength) + ")", text_color=slowMAColor, text_size=size.small)
     table.cell(infoTable, 1, 1, str.tostring(slowMA, format.mintick), text_color=slowMAColor, text_size=size.small)
     table.cell(infoTable, 0, 2, "Filter MA (" + str.tostring(filterMALength) + ")", text_color=filterMAColor, text_size=size.small)
     table.cell(infoTable, 1, 2, str.tostring(filterMA, format.mintick), text_color=filterMAColor, text_size=size.small)
-    table.cell(infoTable, 0, 3, "ATR (14)", text_color=color.white, text_size=size.small)
-    table.cell(infoTable, 1, 3, str.tostring(atr14, format.mintick), text_color=color.white, text_size=size.small)
-    table.cell(infoTable, 0, 4, "Range", text_color=color.white, text_size=size.small)
-    table.cell(infoTable, 1, 4, isInRange ? "Ja ⚠" : "Nein ✓", text_color=isInRange ? color.orange : color.green, text_size=size.small)
-    table.cell(infoTable, 0, 5, "Trend", text_color=color.white, text_size=size.small)
-    table.cell(infoTable, 1, 5, fastMA > slowMA ? "Bullish ▲" : "Bearish ▼", text_color=fastMA > slowMA ? color.green : color.red, text_size=size.small)
-    table.cell(infoTable, 0, 6, "Position", text_color=color.white, text_size=size.small)
-    table.cell(infoTable, 1, 6, strategy.position_size > 0 ? "LONG" : strategy.position_size < 0 ? "SHORT" : "FLAT", text_color=strategy.position_size > 0 ? color.green : strategy.position_size < 0 ? color.red : color.gray, text_size=size.small)
-    table.cell(infoTable, 0, 7, "Trades", text_color=color.white, text_size=size.small)
-    table.cell(infoTable, 1, 7, str.tostring(strategy.closedtrades), text_color=color.white, text_size=size.small)
-    table.cell(infoTable, 0, 8, "Win Rate", text_color=color.white, text_size=size.small)
+    
+    // ATR Info
+    table.cell(infoTable, 0, 3, "ATR (" + str.tostring(atrPeriod) + ")", text_color=color.white, text_size=size.small)
+    table.cell(infoTable, 1, 3, str.tostring(atr, format.mintick), text_color=color.white, text_size=size.small)
+    
+    // SL/TP Settings
+    table.cell(infoTable, 0, 4, "SL (ATR x" + str.tostring(stopLossATR) + ")", text_color=stopLossColor, text_size=size.small)
+    table.cell(infoTable, 1, 4, str.tostring(atr * stopLossATR, format.mintick), text_color=stopLossColor, text_size=size.small)
+    table.cell(infoTable, 0, 5, "TP (R:R " + str.tostring(takeProfitRR) + ")", text_color=takeProfitColor, text_size=size.small)
+    table.cell(infoTable, 1, 5, str.tostring(atr * stopLossATR * takeProfitRR, format.mintick), text_color=takeProfitColor, text_size=size.small)
+    
+    // Status
+    table.cell(infoTable, 0, 6, "Range", text_color=color.white, text_size=size.small)
+    table.cell(infoTable, 1, 6, isInRange ? "Ja ⚠" : "Nein ✓", text_color=isInRange ? color.orange : color.green, text_size=size.small)
+    table.cell(infoTable, 0, 7, "Trend", text_color=color.white, text_size=size.small)
+    table.cell(infoTable, 1, 7, fastMA > slowMA ? "Bullish ▲" : "Bearish ▼", text_color=fastMA > slowMA ? color.green : color.red, text_size=size.small)
+    
+    // Position Info
+    table.cell(infoTable, 0, 8, "Position", text_color=color.white, text_size=size.small)
+    posText = strategy.position_size > 0 ? "LONG" : strategy.position_size < 0 ? "SHORT" : "FLAT"
+    posColor = strategy.position_size > 0 ? color.green : strategy.position_size < 0 ? color.red : color.gray
+    table.cell(infoTable, 1, 8, posText, text_color=posColor, text_size=size.small)
+    
+    // Strategy Stats
+    table.cell(infoTable, 0, 9, "Trades", text_color=color.white, text_size=size.small)
+    table.cell(infoTable, 1, 9, str.tostring(strategy.closedtrades), text_color=color.white, text_size=size.small)
+    table.cell(infoTable, 0, 10, "Win Rate", text_color=color.white, text_size=size.small)
     winRate = strategy.closedtrades > 0 ? strategy.wintrades / strategy.closedtrades * 100 : 0
-    table.cell(infoTable, 1, 8, str.tostring(winRate, "#.##") + "%", text_color=winRate >= 50 ? color.green : color.red, text_size=size.small)
-    table.cell(infoTable, 0, 9, "Net Profit", text_color=color.white, text_size=size.small)
-    table.cell(infoTable, 1, 9, str.tostring(strategy.netprofit, "#.##"), text_color=strategy.netprofit >= 0 ? color.green : color.red, text_size=size.small)
+    table.cell(infoTable, 1, 10, str.tostring(winRate, "#.##") + "%", text_color=winRate >= 50 ? color.green : color.red, text_size=size.small)
+    table.cell(infoTable, 0, 11, "Net Profit", text_color=color.white, text_size=size.small)
+    table.cell(infoTable, 1, 11, str.tostring(strategy.netprofit, "#.##"), text_color=strategy.netprofit >= 0 ? color.green : color.red, text_size=size.small)
 
 // ==========================================
 // ALERTS
