@@ -1,0 +1,474 @@
+// This Pine Script™ code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © Triple Momentum Indicator
+
+//@version=5
+indicator("Triple Momentum Indicator", overlay=true, max_labels_count=500, max_lines_count=500, max_boxes_count=500)
+
+// ==========================================
+// ALERTS SETTINGS
+// ==========================================
+grp_alerts = "ALERTS"
+filterWithFilterMA = input.bool(false, "Filter alerts with the filter MA", group=grp_alerts)
+filterWithRangeDetector = input.bool(true, "Filter alerts with the range detector", group=grp_alerts)
+showEntryAlerts = input.bool(true, "Show entry alerts", group=grp_alerts)
+showTargetAlerts = input.bool(true, "Show target alerts", inline="target_alert", group=grp_alerts)
+targetAlertColor = input.color(color.orange, "", inline="target_alert", group=grp_alerts)
+regularAlertBullColor = input.color(color.green, "Regular alerts", inline="regular", group=grp_alerts)
+regularAlertBearColor = input.color(color.red, "", inline="regular", group=grp_alerts)
+riskierAlertBullColor = input.color(color.lime, "Riskier alerts", inline="riskier", group=grp_alerts)
+riskierAlertBearColor = input.color(color.maroon, "", inline="riskier", group=grp_alerts)
+textColor = input.color(color.black, "Text color", group=grp_alerts)
+
+// ==========================================
+// FAST MA SETTINGS
+// ==========================================
+grp_fast = "FAST MA"
+fastMAType = input.string("EMA", "Typ", options=["EMA", "SMA", "WMA", "VWMA", "RMA", "HMA"], group=grp_fast)
+fastMASource = input.source(close, "Quelle", group=grp_fast)
+fastMALength = input.int(10, "Länge", minval=1, group=grp_fast)
+fastMAPlot = input.bool(true, "Plot", inline="fast_plot", group=grp_fast)
+fastMAColor = input.color(color.red, "", inline="fast_plot", group=grp_fast)
+fastMAWidth = input.int(1, "", inline="fast_plot", minval=1, maxval=5, group=grp_fast)
+
+// ==========================================
+// SLOW MA SETTINGS
+// ==========================================
+grp_slow = "SLOW MA"
+slowMAType = input.string("EMA", "Typ", options=["EMA", "SMA", "WMA", "VWMA", "RMA", "HMA"], group=grp_slow)
+slowMASource = input.source(close, "Quelle", group=grp_slow)
+slowMALength = input.int(30, "Länge", minval=1, group=grp_slow)
+slowMAPlot = input.bool(true, "Plot", inline="slow_plot", group=grp_slow)
+slowMAColor = input.color(color.green, "", inline="slow_plot", group=grp_slow)
+slowMAWidth = input.int(1, "", inline="slow_plot", minval=1, maxval=5, group=grp_slow)
+
+// ==========================================
+// FILTER MA SETTINGS
+// ==========================================
+grp_filter = "FILTER MA"
+filterMAType = input.string("EMA", "Typ", options=["EMA", "SMA", "WMA", "VWMA", "RMA", "HMA"], group=grp_filter)
+filterMASource = input.source(open, "Quelle", group=grp_filter)
+filterMALength = input.int(200, "Länge", minval=1, group=grp_filter)
+filterMAPlot = input.bool(true, "Plot", inline="filter_plot", group=grp_filter)
+filterMAColor = input.color(color.gray, "", inline="filter_plot", group=grp_filter)
+filterMAWidth = input.int(1, "", inline="filter_plot", minval=1, maxval=5, group=grp_filter)
+fillEnabled = input.bool(false, "Füllen", group=grp_filter)
+
+// ==========================================
+// TARGETS SETTINGS
+// ==========================================
+grp_targets = "TARGETS"
+deleteOldLabels = input.bool(false, "Delete old labels", inline="del_labels", group=grp_targets)
+deleteLabelsOnceHit = input.bool(true, "Delete labels once hit", inline="del_labels", group=grp_targets)
+deleteOldLines = input.bool(false, "Delete old lines", inline="del_lines", group=grp_targets)
+deleteLinesOnceHit = input.bool(false, "Delete lines once hit", inline="del_lines", group=grp_targets)
+lineStyle = input.string("Gestrichelt", "Line style", options=["Durchgezogen", "Gestrichelt", "Gepunktet"], group=grp_targets)
+labelSize = input.string("Normal", "Label size", options=["Klein", "Normal", "Groß"], inline="label_opts", group=grp_targets)
+includePrice = input.bool(true, "Include price", inline="label_opts", group=grp_targets)
+labelOffset = input.int(10, "Offset", group=grp_targets)
+entryColor = input.color(color.gray, "Entry Color", group=grp_targets)
+
+// Target 1
+target1Enabled = input.bool(true, "Target 1", inline="t1", group=grp_targets)
+target1Value = input.float(1.0, "", inline="t1", group=grp_targets)
+target1Type = input.string("R:R", "", options=["R:R", "ATR", "Prozent", "Punkte"], inline="t1", group=grp_targets)
+target1Color = input.color(color.teal, "", inline="t1", group=grp_targets)
+
+// Target 2
+target2Enabled = input.bool(true, "Target 2", inline="t2", group=grp_targets)
+target2Value = input.float(2.0, "", inline="t2", group=grp_targets)
+target2Type = input.string("R:R", "", options=["R:R", "ATR", "Prozent", "Punkte"], inline="t2", group=grp_targets)
+target2Color = input.color(color.teal, "", inline="t2", group=grp_targets)
+
+// Target 3
+target3Enabled = input.bool(true, "Target 3", inline="t3", group=grp_targets)
+target3Value = input.float(3.0, "", inline="t3", group=grp_targets)
+target3Type = input.string("R:R", "", options=["R:R", "ATR", "Prozent", "Punkte"], inline="t3", group=grp_targets)
+target3Color = input.color(color.teal, "", inline="t3", group=grp_targets)
+
+// Stop Loss
+stopLossValue = input.float(1.0, "Stop Loss", inline="sl", group=grp_targets)
+stopLossType = input.string("ATR", "", options=["ATR", "Prozent", "Punkte"], inline="sl", group=grp_targets)
+stopLossColor = input.color(color.red, "", inline="sl", group=grp_targets)
+stopLossHitColor = input.color(color.teal, "", inline="sl", group=grp_targets)
+
+// Breakeven
+breakevenEnabled = input.bool(true, "Breakeven", group=grp_targets)
+breakevenTrigger = input.float(1.0, "Trigger:", inline="be_trigger", group=grp_targets)
+breakevenTriggerType = input.string("R:R", "", options=["R:R", "ATR", "Prozent", "Punkte"], inline="be_trigger", group=grp_targets)
+breakevenTriggerColor = input.color(color.orange, "", inline="be_trigger", group=grp_targets)
+breakevenMove = input.float(0.0, "Move:", inline="be_move", group=grp_targets)
+breakevenMoveType = input.string("Entry", "", options=["Entry", "ATR", "Prozent", "Punkte"], inline="be_move", group=grp_targets)
+
+// ==========================================
+// RANGE DETECTOR SETTINGS
+// ==========================================
+grp_range = "RANGE DETECTOR"
+rangeDetectorEnabled = input.bool(true, "Enable Range Detector", group=grp_range)
+rangeAtrPeriod = input.int(14, "ATR Period", group=grp_range)
+rangeAtrMultiplier = input.float(1.5, "ATR Multiplier", step=0.1, group=grp_range)
+rangeLookback = input.int(20, "Lookback Period", group=grp_range)
+
+// ==========================================
+// MA CALCULATION FUNCTION
+// ==========================================
+calcMA(src, len, maType) =>
+    switch maType
+        "EMA" => ta.ema(src, len)
+        "SMA" => ta.sma(src, len)
+        "WMA" => ta.wma(src, len)
+        "VWMA" => ta.vwma(src, len)
+        "RMA" => ta.rma(src, len)
+        "HMA" => ta.hma(src, len)
+        => ta.ema(src, len)
+
+// ==========================================
+// CALCULATE MOVING AVERAGES
+// ==========================================
+fastMA = calcMA(fastMASource, fastMALength, fastMAType)
+slowMA = calcMA(slowMASource, slowMALength, slowMAType)
+filterMA = calcMA(filterMASource, filterMALength, filterMAType)
+
+// ==========================================
+// HELPER FUNCTIONS
+// ==========================================
+getLineStyle() =>
+    switch lineStyle
+        "Durchgezogen" => line.style_solid
+        "Gestrichelt" => line.style_dashed
+        "Gepunktet" => line.style_dotted
+        => line.style_dashed
+
+getLabelSize() =>
+    switch labelSize
+        "Klein" => size.small
+        "Normal" => size.normal
+        "Groß" => size.large
+        => size.normal
+
+// ==========================================
+// RANGE DETECTION
+// ==========================================
+atrValue = ta.atr(rangeAtrPeriod)
+highestHigh = ta.highest(high, rangeLookback)
+lowestLow = ta.lowest(low, rangeLookback)
+rangeSize = highestHigh - lowestLow
+isInRange = rangeDetectorEnabled ? rangeSize < atrValue * rangeAtrMultiplier : false
+
+// ==========================================
+// CROSSOVER DETECTION - BUY/SELL SIGNALS
+// ==========================================
+bullishCross = ta.crossover(fastMA, slowMA)
+bearishCross = ta.crossunder(fastMA, slowMA)
+
+// Filter conditions
+filterBullish = not filterWithFilterMA or close > filterMA
+filterBearish = not filterWithFilterMA or close < filterMA
+rangeFilter = not filterWithRangeDetector or not isInRange
+
+// Final signals (filtered)
+buySignal = bullishCross and filterBullish and rangeFilter
+sellSignal = bearishCross and filterBearish and rangeFilter
+
+// Riskier signals (signals that don't pass all filters)
+riskierBuySignal = bullishCross and not (filterBullish and rangeFilter)
+riskierSellSignal = bearishCross and not (filterBearish and rangeFilter)
+
+// ==========================================
+// ATR FOR TARGETS/STOPS
+// ==========================================
+atr14 = ta.atr(14)
+
+// ==========================================
+// CALCULATE TARGET/STOP LEVELS
+// ==========================================
+calcLevel(entryPrice, isLong, value, levelType, atrVal) =>
+    float result = entryPrice
+    if levelType == "ATR"
+        result := isLong ? entryPrice + (value * atrVal) : entryPrice - (value * atrVal)
+    else if levelType == "Prozent"
+        result := isLong ? entryPrice * (1 + value / 100) : entryPrice * (1 - value / 100)
+    else if levelType == "Punkte"
+        result := isLong ? entryPrice + value : entryPrice - value
+    result
+
+calcRRLevel(entryPrice, stopPrice, rrRatio, isLong) =>
+    float risk = math.abs(entryPrice - stopPrice)
+    isLong ? entryPrice + (risk * rrRatio) : entryPrice - (risk * rrRatio)
+
+// ==========================================
+// PERSISTENT VARIABLES
+// ==========================================
+var float entryPrice = na
+var float stopLossPrice = na
+var float target1Price = na
+var float target2Price = na
+var float target3Price = na
+var float beTriggerPrice = na
+var bool isLongTrade = na
+var bool tradeActive = false
+var int entryBarIndex = na
+
+var line entryLine = na
+var line stopLossLine = na
+var line target1Line = na
+var line target2Line = na
+var line target3Line = na
+var line beTriggerLine = na
+
+var label entryLabel = na
+var label stopLossLabel = na
+var label target1Label = na
+var label target2Label = na
+var label target3Label = na
+var label beTriggerLabel = na
+
+var box targetBox1 = na
+var box targetBox2 = na
+var box targetBox3 = na
+
+// ==========================================
+// CLEANUP PREVIOUS TRADE
+// ==========================================
+cleanupTrade() =>
+    if deleteOldLines
+        line.delete(entryLine)
+        line.delete(stopLossLine)
+        line.delete(target1Line)
+        line.delete(target2Line)
+        line.delete(target3Line)
+        line.delete(beTriggerLine)
+    if deleteOldLabels
+        label.delete(entryLabel)
+        label.delete(stopLossLabel)
+        label.delete(target1Label)
+        label.delete(target2Label)
+        label.delete(target3Label)
+        label.delete(beTriggerLabel)
+    box.delete(targetBox1)
+    box.delete(targetBox2)
+    box.delete(targetBox3)
+
+// ==========================================
+// CREATE TRADE VISUALIZATION
+// ==========================================
+if buySignal or sellSignal
+    // Cleanup previous trade
+    cleanupTrade()
+    
+    isLongTrade := buySignal
+    entryPrice := close
+    tradeActive := true
+    entryBarIndex := bar_index
+    
+    // Calculate Stop Loss
+    stopLossPrice := calcLevel(entryPrice, isLongTrade, stopLossValue, stopLossType, atr14)
+    
+    // Calculate Targets based on R:R or other methods
+    float risk = math.abs(entryPrice - stopLossPrice)
+    
+    if target1Type == "R:R"
+        target1Price := calcRRLevel(entryPrice, stopLossPrice, target1Value, isLongTrade)
+    else
+        target1Price := calcLevel(entryPrice, isLongTrade, target1Value, target1Type, atr14)
+    
+    if target2Type == "R:R"
+        target2Price := calcRRLevel(entryPrice, stopLossPrice, target2Value, isLongTrade)
+    else
+        target2Price := calcLevel(entryPrice, isLongTrade, target2Value, target2Type, atr14)
+    
+    if target3Type == "R:R"
+        target3Price := calcRRLevel(entryPrice, stopLossPrice, target3Value, isLongTrade)
+    else
+        target3Price := calcLevel(entryPrice, isLongTrade, target3Value, target3Type, atr14)
+    
+    // Calculate Breakeven Trigger
+    if breakevenTriggerType == "R:R"
+        beTriggerPrice := calcRRLevel(entryPrice, stopLossPrice, breakevenTrigger, isLongTrade)
+    else
+        beTriggerPrice := calcLevel(entryPrice, isLongTrade, breakevenTrigger, breakevenTriggerType, atr14)
+    
+    // Get styles
+    lstyle = getLineStyle()
+    lsize = getLabelSize()
+    
+    // Create Entry Line and Label
+    entryLine := line.new(bar_index, entryPrice, bar_index + labelOffset, entryPrice, color=entryColor, style=lstyle, width=1)
+    entryLabel := label.new(bar_index + labelOffset, entryPrice, includePrice ? "Entry: " + str.tostring(entryPrice, format.mintick) : "Entry", color=entryColor, textcolor=textColor, style=label.style_label_left, size=lsize)
+    
+    // Create Stop Loss Line and Label
+    stopLossLine := line.new(bar_index, stopLossPrice, bar_index + labelOffset, stopLossPrice, color=stopLossColor, style=lstyle, width=1)
+    stopLossLabel := label.new(bar_index + labelOffset, stopLossPrice, includePrice ? "Stop Loss: " + str.tostring(stopLossPrice, format.mintick) : "Stop Loss", color=stopLossColor, textcolor=textColor, style=label.style_label_left, size=lsize)
+    
+    // Create Target Lines and Labels
+    if target1Enabled
+        target1Line := line.new(bar_index, target1Price, bar_index + labelOffset, target1Price, color=target1Color, style=lstyle, width=1)
+        target1Label := label.new(bar_index + labelOffset, target1Price, includePrice ? "Target 1: " + str.tostring(target1Price, format.mintick) : "Target 1", color=target1Color, textcolor=textColor, style=label.style_label_left, size=lsize)
+    
+    if target2Enabled
+        target2Line := line.new(bar_index, target2Price, bar_index + labelOffset, target2Price, color=target2Color, style=lstyle, width=1)
+        target2Label := label.new(bar_index + labelOffset, target2Price, includePrice ? "Target 2: " + str.tostring(target2Price, format.mintick) : "Target 2", color=target2Color, textcolor=textColor, style=label.style_label_left, size=lsize)
+    
+    if target3Enabled
+        target3Line := line.new(bar_index, target3Price, bar_index + labelOffset, target3Price, color=target3Color, style=lstyle, width=1)
+        target3Label := label.new(bar_index + labelOffset, target3Price, includePrice ? "Target 3: " + str.tostring(target3Price, format.mintick) : "Target 3", color=target3Color, textcolor=textColor, style=label.style_label_left, size=lsize)
+    
+    // Create Breakeven Trigger Line and Label
+    if breakevenEnabled
+        beTriggerLine := line.new(bar_index, beTriggerPrice, bar_index + labelOffset, beTriggerPrice, color=breakevenTriggerColor, style=lstyle, width=1)
+        beTriggerLabel := label.new(bar_index + labelOffset, beTriggerPrice, includePrice ? "BE Trigger: " + str.tostring(beTriggerPrice, format.mintick) : "BE Trigger", color=breakevenTriggerColor, textcolor=textColor, style=label.style_label_left, size=lsize)
+    
+    // Create Target Boxes (filled areas between levels)
+    boxColor1 = color.new(target1Color, 80)
+    boxColor2 = color.new(target2Color, 85)
+    boxColor3 = color.new(target3Color, 90)
+    
+    if isLongTrade
+        if target1Enabled
+            targetBox1 := box.new(bar_index, entryPrice, bar_index + labelOffset, target1Price, border_color=color.new(target1Color, 100), bgcolor=boxColor1)
+        if target2Enabled and target1Enabled
+            targetBox2 := box.new(bar_index, target1Price, bar_index + labelOffset, target2Price, border_color=color.new(target2Color, 100), bgcolor=boxColor2)
+        if target3Enabled and target2Enabled
+            targetBox3 := box.new(bar_index, target2Price, bar_index + labelOffset, target3Price, border_color=color.new(target3Color, 100), bgcolor=boxColor3)
+    else
+        if target1Enabled
+            targetBox1 := box.new(bar_index, target1Price, bar_index + labelOffset, entryPrice, border_color=color.new(target1Color, 100), bgcolor=boxColor1)
+        if target2Enabled and target1Enabled
+            targetBox2 := box.new(bar_index, target2Price, bar_index + labelOffset, target1Price, border_color=color.new(target2Color, 100), bgcolor=boxColor2)
+        if target3Enabled and target2Enabled
+            targetBox3 := box.new(bar_index, target3Price, bar_index + labelOffset, target2Price, border_color=color.new(target3Color, 100), bgcolor=boxColor3)
+
+// ==========================================
+// CHECK FOR TARGET/STOP HITS
+// ==========================================
+if tradeActive and bar_index > entryBarIndex
+    // Check Stop Loss Hit
+    stopHit = isLongTrade ? low <= stopLossPrice : high >= stopLossPrice
+    if stopHit
+        if deleteLinesOnceHit
+            line.delete(stopLossLine)
+        if deleteLabelsOnceHit
+            label.delete(stopLossLabel)
+        tradeActive := false
+    
+    // Check Target 1 Hit
+    t1Hit = isLongTrade ? high >= target1Price : low <= target1Price
+    if t1Hit and target1Enabled
+        if deleteLinesOnceHit
+            line.delete(target1Line)
+        if deleteLabelsOnceHit
+            label.delete(target1Label)
+        box.delete(targetBox1)
+    
+    // Check Target 2 Hit
+    t2Hit = isLongTrade ? high >= target2Price : low <= target2Price
+    if t2Hit and target2Enabled
+        if deleteLinesOnceHit
+            line.delete(target2Line)
+        if deleteLabelsOnceHit
+            label.delete(target2Label)
+        box.delete(targetBox2)
+    
+    // Check Target 3 Hit
+    t3Hit = isLongTrade ? high >= target3Price : low <= target3Price
+    if t3Hit and target3Enabled
+        if deleteLinesOnceHit
+            line.delete(target3Line)
+        if deleteLabelsOnceHit
+            label.delete(target3Label)
+        box.delete(targetBox3)
+        tradeActive := false
+    
+    // Check Breakeven Trigger Hit
+    beHit = isLongTrade ? high >= beTriggerPrice : low <= beTriggerPrice
+    if beHit and breakevenEnabled
+        if deleteLinesOnceHit
+            line.delete(beTriggerLine)
+        if deleteLabelsOnceHit
+            label.delete(beTriggerLabel)
+        // Move stop to breakeven
+        if breakevenMoveType == "Entry"
+            stopLossPrice := entryPrice + breakevenMove
+        else
+            stopLossPrice := calcLevel(entryPrice, isLongTrade, breakevenMove, breakevenMoveType, atr14)
+        // Update stop loss line position
+        line.set_y1(stopLossLine, stopLossPrice)
+        line.set_y2(stopLossLine, stopLossPrice)
+        line.set_color(stopLossLine, stopLossHitColor)
+        label.set_y(stopLossLabel, stopLossPrice)
+        label.set_text(stopLossLabel, includePrice ? "Stop Loss: " + str.tostring(stopLossPrice, format.mintick) : "Stop Loss")
+        label.set_color(stopLossLabel, stopLossHitColor)
+
+// ==========================================
+// PLOT MOVING AVERAGES
+// ==========================================
+plot(fastMAPlot ? fastMA : na, "Fast MA", color=fastMAColor, linewidth=fastMAWidth)
+plot(slowMAPlot ? slowMA : na, "Slow MA", color=slowMAColor, linewidth=slowMAWidth)
+plot(filterMAPlot ? filterMA : na, "Filter MA", color=filterMAColor, linewidth=filterMAWidth)
+
+// Fill between price and filter MA
+fillColorUp = color.new(color.green, 90)
+fillColorDown = color.new(color.red, 90)
+p1 = plot(fillEnabled ? filterMA : na, display=display.none)
+p2 = plot(fillEnabled ? close : na, display=display.none)
+fill(p1, p2, color=fillEnabled ? (close > filterMA ? fillColorUp : fillColorDown) : na)
+
+// ==========================================
+// PLOT BUY/SELL SIGNALS
+// ==========================================
+plotshape(showEntryAlerts and buySignal, "Buy Signal", shape.labelup, location.belowbar, regularAlertBullColor, text="Buy", textcolor=textColor, size=size.normal)
+plotshape(showEntryAlerts and sellSignal, "Sell Signal", shape.labeldown, location.abovebar, regularAlertBearColor, text="Short", textcolor=textColor, size=size.normal)
+
+// Riskier signals (filtered out by MA or range)
+plotshape(showEntryAlerts and riskierBuySignal, "Riskier Buy", shape.labelup, location.belowbar, riskierAlertBullColor, text="Buy*", textcolor=textColor, size=size.small)
+plotshape(showEntryAlerts and riskierSellSignal, "Riskier Sell", shape.labeldown, location.abovebar, riskierAlertBearColor, text="Short*", textcolor=textColor, size=size.small)
+
+// ==========================================
+// ALERTS
+// ==========================================
+alertcondition(buySignal, "Buy Signal", "Triple Momentum: BUY Signal")
+alertcondition(sellSignal, "Sell Signal", "Triple Momentum: SELL Signal")
+alertcondition(buySignal or sellSignal, "Any Entry Signal", "Triple Momentum: Entry Signal")
+alertcondition(riskierBuySignal, "Riskier Buy", "Triple Momentum: Riskier Buy Signal")
+alertcondition(riskierSellSignal, "Riskier Sell", "Triple Momentum: Riskier Sell Signal")
+
+// Target/Stop Alerts
+if showTargetAlerts and tradeActive and bar_index > entryBarIndex
+    if isLongTrade
+        if high >= target1Price and high[1] < target1Price and target1Enabled
+            alert("Target 1 erreicht: " + str.tostring(target1Price, format.mintick), alert.freq_once_per_bar)
+        if high >= target2Price and high[1] < target2Price and target2Enabled
+            alert("Target 2 erreicht: " + str.tostring(target2Price, format.mintick), alert.freq_once_per_bar)
+        if high >= target3Price and high[1] < target3Price and target3Enabled
+            alert("Target 3 erreicht: " + str.tostring(target3Price, format.mintick), alert.freq_once_per_bar)
+        if low <= stopLossPrice and low[1] > stopLossPrice
+            alert("Stop Loss getroffen: " + str.tostring(stopLossPrice, format.mintick), alert.freq_once_per_bar)
+    else
+        if low <= target1Price and low[1] > target1Price and target1Enabled
+            alert("Target 1 erreicht: " + str.tostring(target1Price, format.mintick), alert.freq_once_per_bar)
+        if low <= target2Price and low[1] > target2Price and target2Enabled
+            alert("Target 2 erreicht: " + str.tostring(target2Price, format.mintick), alert.freq_once_per_bar)
+        if low <= target3Price and low[1] > target3Price and target3Enabled
+            alert("Target 3 erreicht: " + str.tostring(target3Price, format.mintick), alert.freq_once_per_bar)
+        if high >= stopLossPrice and high[1] < stopLossPrice
+            alert("Stop Loss getroffen: " + str.tostring(stopLossPrice, format.mintick), alert.freq_once_per_bar)
+
+// ==========================================
+// INFO TABLE
+// ==========================================
+var table infoTable = table.new(position.top_right, 2, 7, bgcolor=color.new(color.black, 80), border_width=1)
+if barstate.islast
+    table.cell(infoTable, 0, 0, "Fast MA (" + str.tostring(fastMALength) + ")", text_color=fastMAColor, text_size=size.small)
+    table.cell(infoTable, 1, 0, str.tostring(fastMA, format.mintick), text_color=fastMAColor, text_size=size.small)
+    table.cell(infoTable, 0, 1, "Slow MA (" + str.tostring(slowMALength) + ")", text_color=slowMAColor, text_size=size.small)
+    table.cell(infoTable, 1, 1, str.tostring(slowMA, format.mintick), text_color=slowMAColor, text_size=size.small)
+    table.cell(infoTable, 0, 2, "Filter MA (" + str.tostring(filterMALength) + ")", text_color=filterMAColor, text_size=size.small)
+    table.cell(infoTable, 1, 2, str.tostring(filterMA, format.mintick), text_color=filterMAColor, text_size=size.small)
+    table.cell(infoTable, 0, 3, "ATR (14)", text_color=color.white, text_size=size.small)
+    table.cell(infoTable, 1, 3, str.tostring(atr14, format.mintick), text_color=color.white, text_size=size.small)
+    table.cell(infoTable, 0, 4, "Range", text_color=color.white, text_size=size.small)
+    table.cell(infoTable, 1, 4, isInRange ? "Ja ⚠" : "Nein ✓", text_color=isInRange ? color.orange : color.green, text_size=size.small)
+    table.cell(infoTable, 0, 5, "Trend", text_color=color.white, text_size=size.small)
+    table.cell(infoTable, 1, 5, fastMA > slowMA ? "Bullish ▲" : "Bearish ▼", text_color=fastMA > slowMA ? color.green : color.red, text_size=size.small)
+    if tradeActive
+        table.cell(infoTable, 0, 6, "Position", text_color=color.white, text_size=size.small)
+        table.cell(infoTable, 1, 6, isLongTrade ? "LONG" : "SHORT", text_color=isLongTrade ? color.green : color.red, text_size=size.small)
