@@ -1,6 +1,13 @@
-# Triple Momentum Indicator
+# Triple Momentum Indicator & Strategy
 
-Ein umfassender TradingView-Indikator, der drei EMAs plottet und Buy/Sell-Signale generiert, wenn der Fast EMA den Slow EMA kreuzt.
+Ein umfassender TradingView-Indikator und Strategie, der drei EMAs plottet und Buy/Sell-Signale generiert, wenn der Fast EMA den Slow EMA kreuzt.
+
+## Dateien
+
+| Datei | Beschreibung |
+|-------|--------------|
+| `TripleMomentumIndicator.pine` | Nur Signale anzeigen (kein Backtesting) |
+| `TripleMomentumStrategy.pine` | **Vollständige Strategie mit Backtesting** |
 
 ## Features
 
@@ -107,6 +114,53 @@ Alle MAs unterstützen folgende Typen:
 3. **Aggressive Setup**:
    - Deaktiviere alle Filter
    - Nutze kürzere MA-Perioden (z.B. 5/15)
+
+## Strategy-spezifische Einstellungen
+
+Die Strategie (`TripleMomentumStrategy.pine`) enthält zusätzliche Backtesting-Funktionen:
+
+### STRATEGY Einstellungen
+
+| Einstellung | Beschreibung | Standard |
+|------------|--------------|----------|
+| Start Date | Backtesting Startdatum | 2020-01-01 |
+| End Date | Backtesting Enddatum | 2030-12-31 |
+| Trade Direction | Long Only / Short Only / Both | Both |
+| Use Stop Loss | Aktiviert Stop Loss | An |
+| Use Take Profit | Aktiviert Take Profit | An |
+| Take Profit Target | Welches Target als TP | Target 2 |
+| Use Breakeven | Aktiviert Breakeven | An |
+| Use Trailing Stop | Aktiviert Trailing Stop | Aus |
+| Trailing Stop % | Trailing Stop Prozent | 1.0% |
+
+### Strategie-Eigenschaften
+
+```
+Initial Capital:     10,000
+Position Size:       100% of Equity
+Commission:          0.1%
+Slippage:            1 Tick
+Pyramiding:          0 (keine Pyramidierung)
+```
+
+### Info-Tabelle (Strategie)
+
+Die Strategie zeigt zusätzlich an:
+- Anzahl geschlossener Trades
+- Win Rate (%)
+- Net Profit
+
+## Unterschied Indikator vs. Strategie
+
+| Feature | Indikator | Strategie |
+|---------|-----------|-----------|
+| Signale anzeigen | ✓ | ✓ |
+| Target/SL Linien | ✓ | ✓ |
+| Backtesting | ✗ | ✓ |
+| Performance Statistiken | ✗ | ✓ |
+| Automatische Exits | ✗ | ✓ |
+| Trailing Stop | ✗ | ✓ |
+| Strategy Tester Tab | ✗ | ✓ |
 
 ## Lizenz
 
