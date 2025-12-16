@@ -1,0 +1,892 @@
+// NoWickMaster - Combined ORB, No-Wick Candles, FVG & iFVG Indicator
+// Based on LuxAlgo ORB, ICT Killzones, and FVG concepts
+
+//@version=6
+indicator("NoWickMaster", shorttitle = "NoWickMaster", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
+
+//=============================================================================
+// HELPER FUNCTIONS
+//=============================================================================
+
+get_line_style(_style) =>
+    switch _style
+        "Solid" => line.style_solid
+        "Dotted" => line.style_dotted
+        "Dashed" => line.style_dashed
+        => line.style_solid
+
+get_size(x) =>
+    switch x
+        "Auto" => size.auto
+        "Tiny" => size.tiny
+        "Small" => size.small
+        "Normal" => size.normal
+        "Large" => size.large
+        "Huge" => size.huge
+        => size.normal
+
+fz(_val) => _val == 0 ? 1 : _val
+
+get_1up(_val) => (_val - math.floor(_val)) > 0 ? int(math.floor(_val) + 1) : int(_val)
+
+day_ma(_start, _type, s, l) =>
+    bs_nd = fz(ta.barssince(_start))
+    v_len = bs_nd < l ? bs_nd : l
+    var float ma = na
+    if _type == "EMA"
+        k = 2 / (v_len + 1)
+        ma := (s * k) + (nz(ma[1]) * (1 - k))
+    if _type == "RMA"
+        a = (1 / v_len)
+        ma := a * s + (1 - a) * nz(ma[1])
+    if _type == "SMA"
+        ma := ta.sma(s, v_len)
+    if _type == "WMA"
+        ma := ta.wma(s, v_len)
+    if _type == "VWMA"
+        ma := ta.vwma(s, v_len)
+    ma
+
+//=============================================================================
+// INPUTS - NO WICK CANDLES
+//=============================================================================
+
+var g_NOWICK = "═══════════ No Wick Candles ═══════════"
+showNoWick = input.bool(true, title = "Highlight No-Wick Candles", group = g_NOWICK)
+noWickBullColor = input.color(color.new(#00ff00, 0), title = "Bullish No-Wick", group = g_NOWICK, inline = "nw1")
+noWickBearColor = input.color(color.new(#ff0000, 0), title = "Bearish No-Wick", group = g_NOWICK, inline = "nw1")
+noWickBodyColor = input.bool(true, title = "Color Body", group = g_NOWICK, inline = "nw2")
+noWickBorderColor = input.bool(true, title = "Color Border", group = g_NOWICK, inline = "nw2")
+noWickWickColor = input.bool(false, title = "Color Wick", group = g_NOWICK, inline = "nw2")
+wickTolerance = input.float(0.0, title = "Wick Tolerance (%)", minval = 0, maxval = 50, step = 0.1, group = g_NOWICK, tooltip = "Percentage of candle range allowed as wick")
+
+//=============================================================================
+// INPUTS - FVG SETTINGS
+//=============================================================================
+
+var g_FVG_TF = "═══════════ FVG Timeframes ═══════════"
+useTF1 = input.bool(true, "", inline = "TF1", group = g_FVG_TF)
+tf1 = input.timeframe("15", "Timeframe 1", inline = "TF1", group = g_FVG_TF)
+useTF2 = input.bool(false, "", inline = "TF2", group = g_FVG_TF)
+tf2 = input.timeframe("5", "Timeframe 2", inline = "TF2", group = g_FVG_TF)
+useTF3 = input.bool(true, "", inline = "TF3", group = g_FVG_TF)
+tf3 = input.timeframe("60", "Timeframe 3", inline = "TF3", group = g_FVG_TF)
+useTF4 = input.bool(false, "", inline = "TF4", group = g_FVG_TF)
+tf4 = input.timeframe("240", "Timeframe 4", inline = "TF4", group = g_FVG_TF)
+useTF5 = input.bool(false, "", inline = "TF5", group = g_FVG_TF)
+tf5 = input.timeframe("D", "Timeframe 5", inline = "TF5", group = g_FVG_TF)
+
+var g_FVG = "═══════════ FVG Settings ═══════════"
+waitForClose = input.bool(false, "Wait for candle close to identify FVGs?", group = g_FVG)
+hideSmaller = input.bool(false, "Hide FVGs lower than enabled timeframes?", group = g_FVG)
+showFVG = input.bool(true, "Show FVG", group = g_FVG)
+showIFVG = input.bool(false, "Show iFVG", group = g_FVG)
+filledType = input.string("Close", "Filled FVG Type", options = ["Close", "Wick", "None"], group = g_FVG)
+maxBarsBack = input.int(50, "Max bars back to find FVGs?", minval = 10, maxval = 500, group = g_FVG)
+
+var g_FVG_LABEL = "═══════════ FVG Label Settings ═══════════"
+showFVGLabels = input.bool(true, "Show Labels?", group = g_FVG_LABEL)
+labelDistance = input.int(10, "Label Distance (Extend option only)", group = g_FVG_LABEL)
+
+tf1LabelFVG = input.string("15min FVG", "TF1 Labels: FVG", inline = "L1", group = g_FVG_LABEL)
+tf1LabelIFVG = input.string("15min iFVG", "iFVG", inline = "L1", group = g_FVG_LABEL)
+tf2LabelFVG = input.string("5m FVG", "TF2 Labels: FVG", inline = "L2", group = g_FVG_LABEL)
+tf2LabelIFVG = input.string("5m iFVG", "iFVG", inline = "L2", group = g_FVG_LABEL)
+tf3LabelFVG = input.string("1h FVG", "TF3 Labels: FVG", inline = "L3", group = g_FVG_LABEL)
+tf3LabelIFVG = input.string("1h iFVG", "iFVG", inline = "L3", group = g_FVG_LABEL)
+tf4LabelFVG = input.string("4h FVG", "TF4 Labels: FVG", inline = "L4", group = g_FVG_LABEL)
+tf4LabelIFVG = input.string("4h iFVG", "iFVG", inline = "L4", group = g_FVG_LABEL)
+tf5LabelFVG = input.string("D FVG", "TF5 Labels: FVG", inline = "L5", group = g_FVG_LABEL)
+tf5LabelIFVG = input.string("D iFVG", "iFVG", inline = "L5", group = g_FVG_LABEL)
+
+var g_FVG_BOX = "═══════════ FVG Box Settings ═══════════"
+deleteAfterFill = input.bool(true, "Delete Boxes after fill?", group = g_FVG_BOX)
+extendBoxes = input.bool(false, "Extend Boxes?", group = g_FVG_BOX)
+boxLength = input.int(20, "Length of Boxes", minval = 1, group = g_FVG_BOX)
+fvgBullColor = input.color(color.new(#089981, 70), "FVG Box Color: Bullish", inline = "FVGCol", group = g_FVG_BOX)
+fvgBearColor = input.color(color.new(#f23645, 70), "Bearish", inline = "FVGCol", group = g_FVG_BOX)
+ifvgBullColor = input.color(color.new(#2962ff, 70), "IFVG Box Color: Bullish", inline = "IFVGCol", group = g_FVG_BOX)
+ifvgBearColor = input.color(color.new(#7b1fa2, 70), "Bearish", inline = "IFVGCol", group = g_FVG_BOX)
+
+//=============================================================================
+// INPUTS - GENERAL SETTINGS
+//=============================================================================
+
+var g_GENERAL = "═══════════ General Settings ═══════════"
+gmt_tz = input.string("America/New_York", title = "Timezone", options = ["America/New_York", "UTC-12", "UTC-11", "UTC-10", "UTC-9", "UTC-8", "UTC-7", "UTC-6", "UTC-5", "UTC-4", "UTC-3", "UTC-2", "UTC-1", "UTC+0", "UTC+1", "UTC+2", "UTC+3", "UTC+4", "UTC+5", "UTC+6", "UTC+7", "UTC+8", "UTC+9", "UTC+10", "UTC+11", "UTC+12"], group = g_GENERAL)
+max_days = input.int(3, "Session Drawing Limit", 1, tooltip = "Maximum number of sessions to display", group = g_GENERAL)
+showHist = input.bool(true, title = "Show Historical Data", group = g_GENERAL)
+txtSize = input.string("Small", title = "Text Size", options = ["Tiny", "Small", "Normal", "Large", "Huge"], group = g_GENERAL)
+txt_color = input.color(color.white, "Text Color", group = g_GENERAL)
+
+//=============================================================================
+// INPUTS - OPENING RANGE (ORB)
+//=============================================================================
+
+var g_OR = "═══════════ Opening Range ═══════════"
+showOR = input.bool(true, title = "Show Opening Range", group = g_OR)
+orTF = input.timeframe("30", title = "OR Time Period", group = g_OR)
+crTog = input.bool(false, title = "Use Custom Range", inline = "Custom", group = g_OR)
+crSesh = input.session("0930-1000", title = "", inline = "Custom", group = g_OR)
+
+orColor = input.color(#787b86, title = "OR Levels Color", group = g_OR, inline = "OR1")
+orFillColor = input.color(color.new(color.gray, 60), title = "OR Fill Color", group = g_OR, inline = "OR1")
+greenFill = input.color(color.new(#089981, 80), title = "Bull Fill", group = g_OR, inline = "OR2")
+redFill = input.color(color.new(#f23645, 80), title = "Bear Fill", group = g_OR, inline = "OR2")
+
+//=============================================================================
+// INPUTS - BREAKOUT SIGNALS
+//=============================================================================
+
+var g_SIGNALS = "═══════════ Breakout Signals ═══════════"
+sigTog = input.bool(true, title = "Show Breakout Signals", group = g_SIGNALS)
+useBias = input.string("No Bias", title = "Signal Bias", options = ["No Bias", "Daily Bias"], group = g_SIGNALS) == "Daily Bias"
+sigSize = input.string("Small", title = "Signal Size", options = ["Tiny", "Small", "Normal", "Large", "Huge"], group = g_SIGNALS)
+upSigColor = input.color(#089981, title = "Up Color", group = g_SIGNALS, inline = "SigColors")
+downSigColor = input.color(#f23645, title = "Down Color", group = g_SIGNALS, inline = "SigColors")
+
+//=============================================================================
+// INPUTS - TARGETS
+//=============================================================================
+
+var g_TARGETS = "═══════════ Targets ═══════════"
+tTog = input.bool(true, title = "Show Targets", group = g_TARGETS)
+tPer = input.float(50, minval = 1, title = "Target % of Range", group = g_TARGETS) * 0.01
+tSrc = input.string("Close", title = "Target Cross Source", options = ["Close", "Highs/Lows"], group = g_TARGETS)
+tDispType = input.string("Adaptive", title = "Target Display", options = ["Adaptive", "Extended"], group = g_TARGETS)
+tStyle = input.string("___", title = "Target Style", options = ["___", "- - -", ". . ."], group = g_TARGETS)
+green = input.color(color.new(#089981, 60), title = "Bull Target Color", group = g_TARGETS, inline = "TColors")
+red = input.color(color.new(#f23645, 60), title = "Bear Target Color", group = g_TARGETS, inline = "TColors")
+
+//=============================================================================
+// INPUTS - ICT KILLZONES
+//=============================================================================
+
+var g_KZ = "═══════════ ICT Killzones ═══════════"
+show_kz = input.bool(true, "Show Killzone Boxes", inline = "KZ", group = g_KZ)
+show_kz_text = input.bool(true, "Display Text", inline = "KZ", group = g_KZ)
+
+use_asia = input.bool(true, "", inline = "ASIA", group = g_KZ)
+as_txt = input.string("Asia", "", inline = "ASIA", group = g_KZ)
+asia = input.session("2000-0000", "", inline = "ASIA", group = g_KZ)
+as_color = input.color(color.blue, "", inline = "ASIA", group = g_KZ)
+
+use_london = input.bool(true, "", inline = "LONDON", group = g_KZ)
+lo_txt = input.string("London", "", inline = "LONDON", group = g_KZ)
+london = input.session("0200-0500", "", inline = "LONDON", group = g_KZ)
+lo_color = input.color(color.red, "", inline = "LONDON", group = g_KZ)
+
+use_nyam = input.bool(true, "", inline = "NYAM", group = g_KZ)
+na_txt = input.string("NY AM", "", inline = "NYAM", group = g_KZ)
+nyam = input.session("0930-1100", "", inline = "NYAM", group = g_KZ)
+na_color = input.color(#089981, "", inline = "NYAM", group = g_KZ)
+
+use_nylu = input.bool(false, "", inline = "NYLU", group = g_KZ)
+nl_txt = input.string("NY Lunch", "", inline = "NYLU", group = g_KZ)
+nylu = input.session("1200-1300", "", inline = "NYLU", group = g_KZ)
+nl_color = input.color(color.yellow, "", inline = "NYLU", group = g_KZ)
+
+use_nypm = input.bool(false, "", inline = "NYPM", group = g_KZ)
+np_txt = input.string("NY PM", "", inline = "NYPM", group = g_KZ)
+nypm = input.session("1330-1600", "", inline = "NYPM", group = g_KZ)
+np_color = input.color(color.purple, "", inline = "NYPM", group = g_KZ)
+
+box_transparency = input.int(70, "Box Transparency", 0, 100, group = g_KZ)
+text_transparency = input.int(50, "Text Transparency", 0, 100, group = g_KZ)
+
+//=============================================================================
+// INPUTS - KILLZONE PIVOTS
+//=============================================================================
+
+var g_KZ_PIVOTS = "═══════════ Killzone Pivots ═══════════"
+show_pivots = input.bool(true, "Show Pivots", inline = "PV", group = g_KZ_PIVOTS)
+use_alerts = input.bool(true, "Alert Broken Pivots", inline = "PV", group = g_KZ_PIVOTS)
+show_midpoints = input.bool(false, "Show Pivot Midpoints", inline = "mp", group = g_KZ_PIVOTS)
+stop_midpoints = input.bool(true, "Stop Once Mitigated", inline = "mp", group = g_KZ_PIVOTS)
+show_labels = input.bool(true, "Show Pivot Labels", inline = "LB", group = g_KZ_PIVOTS)
+label_price = input.bool(false, "Display Price", inline = "LB", group = g_KZ_PIVOTS)
+label_right = input.bool(false, "Right Side", inline = "LB", group = g_KZ_PIVOTS)
+ext_pivots = input.string("Until Mitigated", "Extend Pivots...", options = ["Until Mitigated", "Past Mitigation"], group = g_KZ_PIVOTS)
+ext_which = input.string("Most Recent", "...From Which Sessions", options = ["Most Recent", "All"], group = g_KZ_PIVOTS)
+
+ash_str = input.string("AS.H", "Asia Labels", inline = "L_AS", group = g_KZ_PIVOTS)
+asl_str = input.string("AS.L", "", inline = "L_AS", group = g_KZ_PIVOTS)
+loh_str = input.string("LO.H", "London Labels", inline = "L_LO", group = g_KZ_PIVOTS)
+lol_str = input.string("LO.L", "", inline = "L_LO", group = g_KZ_PIVOTS)
+nah_str = input.string("NYAM.H", "NY AM Labels", inline = "L_NA", group = g_KZ_PIVOTS)
+nal_str = input.string("NYAM.L", "", inline = "L_NA", group = g_KZ_PIVOTS)
+nlh_str = input.string("NYL.H", "NY Lunch Labels", inline = "L_NL", group = g_KZ_PIVOTS)
+nll_str = input.string("NYL.L", "", inline = "L_NL", group = g_KZ_PIVOTS)
+nph_str = input.string("NYPM.H", "NY PM Labels", inline = "L_NP", group = g_KZ_PIVOTS)
+npl_str = input.string("NYPM.L", "", inline = "L_NP", group = g_KZ_PIVOTS)
+
+kzp_style = get_line_style(input.string(defval = "Solid", title = "Pivot Style", options = ["Solid", "Dotted", "Dashed"], inline = "KZP", group = g_KZ_PIVOTS))
+kzp_width = input.int(1, "", inline = "KZP", group = g_KZ_PIVOTS)
+kzm_style = get_line_style(input.string(defval = "Dotted", title = "Midpoint Style", options = ["Solid", "Dotted", "Dashed"], inline = "KZM", group = g_KZ_PIVOTS))
+kzm_width = input.int(1, "", inline = "KZM", group = g_KZ_PIVOTS)
+
+//=============================================================================
+// ERROR HANDLING
+//=============================================================================
+
+if timeframe.in_seconds(timeframe.period) >= timeframe.in_seconds("D")
+    runtime.error("Timeframe is too high! Please use a timeframe less than 1 Day.")
+
+//=============================================================================
+// USER-DEFINED TYPES
+//=============================================================================
+
+type target
+    line ln
+    label lab
+
+type FVGBox
+    box bx
+    label lb
+    float top
+    float bottom
+    bool isBullish
+    bool isFilled
+    string tfLabel
+    int tfSeconds
+
+type kz
+    string _title
+    array<box> _box
+    array<line> _hi_line
+    array<line> _md_line
+    array<line> _lo_line
+    array<label> _hi_label
+    array<label> _lo_label
+    array<bool> _hi_valid
+    array<bool> _md_valid
+    array<bool> _lo_valid
+    array<float> _range_store
+    float _range_current
+
+type kz_helper
+    kz _kz
+    string session
+    color c
+    string box_txt
+    string hi_txt
+    string lo_txt
+
+//=============================================================================
+// VARIABLES
+//=============================================================================
+
+var invis = color.rgb(0, 0, 0, 100)
+var transparent = #ffffff00
+var lbl_size = get_size(txtSize)
+var sig_size = get_size(sigSize)
+
+// FVG Arrays
+var array<FVGBox> bullFVGs = array.new<FVGBox>()
+var array<FVGBox> bearFVGs = array.new<FVGBox>()
+var array<FVGBox> bullIFVGs = array.new<FVGBox>()
+var array<FVGBox> bearIFVGs = array.new<FVGBox>()
+
+// Opening Range Variables
+var up_targs = array.new<target>(na)
+var down_targs = array.new<target>(na)
+var signals = array.new_label()
+
+var bool or_sesh = false
+var bool or_token = false
+
+var float orh = na
+var float orl = na
+var float hst = na
+var float lst = na
+var float prev_orm = na
+
+var int up_count = na
+var int down_count = na
+
+var box or_bx = na
+
+var int day_dir = 0
+var down_check = false
+var up_check = false
+down_signal = false
+up_signal = false
+
+var target h_ln = target.new(na, na)
+var target l_ln = target.new(na, na)
+var line m_ln = na
+
+var ext_current = ext_which == "Most Recent"
+var ext_past = ext_pivots == "Past Mitigation"
+
+//=============================================================================
+// NO WICK CANDLE DETECTION
+//=============================================================================
+
+candleRange = high - low
+bodyTop = math.max(open, close)
+bodyBottom = math.min(open, close)
+upperWick = high - bodyTop
+lowerWick = bodyBottom - low
+
+// Calculate tolerance
+toleranceAmount = candleRange * (wickTolerance / 100)
+
+// Detect no-wick candles (or within tolerance)
+noUpperWick = upperWick <= toleranceAmount
+noLowerWick = lowerWick <= toleranceAmount
+isBullishCandle = close > open
+isBearishCandle = close < open
+
+// Bullish no-wick: no lower wick (marubozu-like bullish)
+bullishNoWick = isBullishCandle and noLowerWick and showNoWick
+// Bearish no-wick: no upper wick (marubozu-like bearish)
+bearishNoWick = isBearishCandle and noUpperWick and showNoWick
+
+// Apply candle colors
+noWickColor = bullishNoWick ? noWickBullColor : bearishNoWick ? noWickBearColor : na
+
+barcolor(noWickBodyColor and (bullishNoWick or bearishNoWick) ? noWickColor : na)
+plotcandle(open, high, low, close, 
+     color = noWickBodyColor and (bullishNoWick or bearishNoWick) ? noWickColor : na,
+     wickcolor = noWickWickColor and (bullishNoWick or bearishNoWick) ? noWickColor : na,
+     bordercolor = noWickBorderColor and (bullishNoWick or bearishNoWick) ? noWickColor : na,
+     display = display.none)
+
+//=============================================================================
+// FVG DETECTION FUNCTIONS
+//=============================================================================
+
+// Get TF data
+getTFData(tf) =>
+    request.security(syminfo.tickerid, tf, [high[2], low[2], high[1], low[1], high, low, close[1], barstate.isconfirmed], lookahead = barmerge.lookahead_on)
+
+// Detect FVG on a specific timeframe
+detectFVG(bool use, string tf, string fvgLabel, string ifvgLabel) =>
+    if use
+        [h2, l2, h1, l1, h0, l0, c1, confirmed] = getTFData(tf)
+        
+        tfSeconds = timeframe.in_seconds(tf)
+        chartSeconds = timeframe.in_seconds(timeframe.period)
+        
+        // Skip if hiding smaller timeframes and this TF is smaller than chart
+        if hideSmaller and tfSeconds < chartSeconds
+            [false, false, 0.0, 0.0, false]
+        else
+            // Check if we should wait for confirmation
+            shouldProcess = waitForClose ? confirmed : true
+            
+            if shouldProcess
+                // Bullish FVG: Current low > High from 2 bars ago
+                bullishFVG = l0 > h2
+                bullishTop = l0
+                bullishBottom = h2
+                
+                // Bearish FVG: Current high < Low from 2 bars ago
+                bearishFVG = h0 < l2
+                bearishTop = l2
+                bearishBottom = h0
+                
+                [bullishFVG, bearishFVG, bullishFVG ? bullishTop : bearishTop, bullishFVG ? bullishBottom : bearishBottom, true]
+            else
+                [false, false, 0.0, 0.0, false]
+    else
+        [false, false, 0.0, 0.0, false]
+
+// Create FVG Box
+createFVGBox(array<FVGBox> arr, float top, float bottom, bool isBull, bool isInverse, string tfLabel, int tfSec) =>
+    col = isInverse ? (isBull ? ifvgBullColor : ifvgBearColor) : (isBull ? fvgBullColor : fvgBearColor)
+    rightBar = extendBoxes ? bar_index + boxLength : bar_index + boxLength
+    
+    newBox = box.new(bar_index - 1, top, rightBar, bottom, border_color = col, bgcolor = col)
+    
+    newLabel = label(na)
+    if showFVGLabels
+        newLabel := label.new(rightBar, math.avg(top, bottom), tfLabel, 
+             style = label.style_label_left, 
+             color = transparent, 
+             textcolor = txt_color, 
+             size = lbl_size)
+    
+    fvgObj = FVGBox.new(newBox, newLabel, top, bottom, isBull, false, tfLabel, tfSec)
+    arr.push(fvgObj)
+
+// Check if FVG is filled
+checkFVGFill(array<FVGBox> arr, bool isBull) =>
+    if arr.size() > 0
+        for i = arr.size() - 1 to 0
+            fvg = arr.get(i)
+            if not fvg.isFilled
+                filled = false
+                
+                if filledType == "Close"
+                    if isBull
+                        filled := close < fvg.bottom
+                    else
+                        filled := close > fvg.top
+                else if filledType == "Wick"
+                    if isBull
+                        filled := low < fvg.bottom
+                    else
+                        filled := high > fvg.top
+                
+                if filled
+                    fvg.isFilled := true
+                    if deleteAfterFill
+                        fvg.bx.delete()
+                        if not na(fvg.lb)
+                            fvg.lb.delete()
+                        arr.remove(i)
+                    continue
+                
+                // Extend box if option enabled
+                if extendBoxes
+                    fvg.bx.set_right(bar_index + labelDistance)
+                    if not na(fvg.lb)
+                        fvg.lb.set_x(bar_index + labelDistance)
+
+// Limit array size
+limitFVGArray(array<FVGBox> arr, int maxSize) =>
+    while arr.size() > maxSize
+        oldest = arr.shift()
+        oldest.bx.delete()
+        if not na(oldest.lb)
+            oldest.lb.delete()
+
+//=============================================================================
+// FVG PROCESSING
+//=============================================================================
+
+// Process each timeframe for FVG
+[bull1, bear1, top1, bot1, valid1] = detectFVG(useTF1, tf1, tf1LabelFVG, tf1LabelIFVG)
+[bull2, bear2, top2, bot2, valid2] = detectFVG(useTF2, tf2, tf2LabelFVG, tf2LabelIFVG)
+[bull3, bear3, top3, bot3, valid3] = detectFVG(useTF3, tf3, tf3LabelFVG, tf3LabelIFVG)
+[bull4, bear4, top4, bot4, valid4] = detectFVG(useTF4, tf4, tf4LabelFVG, tf4LabelIFVG)
+[bull5, bear5, top5, bot5, valid5] = detectFVG(useTF5, tf5, tf5LabelFVG, tf5LabelIFVG)
+
+// Create new FVG boxes
+if showFVG
+    if bull1 and valid1
+        createFVGBox(bullFVGs, top1, bot1, true, false, tf1LabelFVG, timeframe.in_seconds(tf1))
+    if bear1 and valid1
+        createFVGBox(bearFVGs, top1, bot1, false, false, tf1LabelFVG, timeframe.in_seconds(tf1))
+    
+    if bull2 and valid2
+        createFVGBox(bullFVGs, top2, bot2, true, false, tf2LabelFVG, timeframe.in_seconds(tf2))
+    if bear2 and valid2
+        createFVGBox(bearFVGs, top2, bot2, false, false, tf2LabelFVG, timeframe.in_seconds(tf2))
+    
+    if bull3 and valid3
+        createFVGBox(bullFVGs, top3, bot3, true, false, tf3LabelFVG, timeframe.in_seconds(tf3))
+    if bear3 and valid3
+        createFVGBox(bearFVGs, top3, bot3, false, false, tf3LabelFVG, timeframe.in_seconds(tf3))
+    
+    if bull4 and valid4
+        createFVGBox(bullFVGs, top4, bot4, true, false, tf4LabelFVG, timeframe.in_seconds(tf4))
+    if bear4 and valid4
+        createFVGBox(bearFVGs, top4, bot4, false, false, tf4LabelFVG, timeframe.in_seconds(tf4))
+    
+    if bull5 and valid5
+        createFVGBox(bullFVGs, top5, bot5, true, false, tf5LabelFVG, timeframe.in_seconds(tf5))
+    if bear5 and valid5
+        createFVGBox(bearFVGs, top5, bot5, false, false, tf5LabelFVG, timeframe.in_seconds(tf5))
+
+// Check fills and manage arrays
+if showFVG
+    checkFVGFill(bullFVGs, true)
+    checkFVGFill(bearFVGs, false)
+    limitFVGArray(bullFVGs, maxBarsBack)
+    limitFVGArray(bearFVGs, maxBarsBack)
+
+// iFVG Detection - When price fills an FVG and creates inverse zone
+if showIFVG
+    // Check for iFVG creation from filled FVGs
+    for i = bullFVGs.size() - 1 to 0
+        fvg = bullFVGs.get(i)
+        if fvg.isFilled and not deleteAfterFill
+            // Create iFVG at the filled zone
+            createFVGBox(bullIFVGs, fvg.top, fvg.bottom, true, true, 
+                 str.replace(fvg.tfLabel, "FVG", "iFVG"), fvg.tfSeconds)
+            bullFVGs.remove(i)
+            fvg.bx.delete()
+            if not na(fvg.lb)
+                fvg.lb.delete()
+    
+    for i = bearFVGs.size() - 1 to 0
+        fvg = bearFVGs.get(i)
+        if fvg.isFilled and not deleteAfterFill
+            createFVGBox(bearIFVGs, fvg.top, fvg.bottom, false, true,
+                 str.replace(fvg.tfLabel, "FVG", "iFVG"), fvg.tfSeconds)
+            bearFVGs.remove(i)
+            fvg.bx.delete()
+            if not na(fvg.lb)
+                fvg.lb.delete()
+    
+    // Manage iFVG arrays
+    checkFVGFill(bullIFVGs, true)
+    checkFVGFill(bearIFVGs, false)
+    limitFVGArray(bullIFVGs, maxBarsBack)
+    limitFVGArray(bearIFVGs, maxBarsBack)
+
+//=============================================================================
+// KILLZONE INITIALIZATION
+//=============================================================================
+
+initKZ() =>
+    array<kz_helper> res = array.new<kz_helper>()
+    if use_asia
+        res.push(kz_helper.new(
+             kz.new(as_txt, array.new_box(), array.new_line(), array.new_line(), array.new_line(), array.new_label(), array.new_label(), array.new_bool(), array.new_bool(), array.new_bool(), array.new_float()),
+             asia, as_color, as_txt, ash_str, asl_str))
+    if use_london
+        res.push(kz_helper.new(
+             kz.new(lo_txt, array.new_box(), array.new_line(), array.new_line(), array.new_line(), array.new_label(), array.new_label(), array.new_bool(), array.new_bool(), array.new_bool(), array.new_float()),
+             london, lo_color, lo_txt, loh_str, lol_str))
+    if use_nyam
+        res.push(kz_helper.new(
+             kz.new(na_txt, array.new_box(), array.new_line(), array.new_line(), array.new_line(), array.new_label(), array.new_label(), array.new_bool(), array.new_bool(), array.new_bool(), array.new_float()),
+             nyam, na_color, na_txt, nah_str, nal_str))
+    if use_nylu
+        res.push(kz_helper.new(
+             kz.new(nl_txt, array.new_box(), array.new_line(), array.new_line(), array.new_line(), array.new_label(), array.new_label(), array.new_bool(), array.new_bool(), array.new_bool(), array.new_float()),
+             nylu, nl_color, nl_txt, nlh_str, nll_str))
+    if use_nypm
+        res.push(kz_helper.new(
+             kz.new(np_txt, array.new_box(), array.new_line(), array.new_line(), array.new_line(), array.new_label(), array.new_label(), array.new_bool(), array.new_bool(), array.new_bool(), array.new_float()),
+             nypm, np_color, np_txt, nph_str, npl_str))
+    res
+
+var array<kz_helper> _kz = initKZ()
+
+//=============================================================================
+// OPENING RANGE CALCULATIONS
+//=============================================================================
+
+orm = math.avg(orh, orl)
+orw = math.abs(orh - orl)
+
+h_src = tSrc == "Close" ? close : high
+l_src = tSrc == "Close" ? close : low
+
+new_tf = timeframe.change(orTF)
+if crTog
+    or_sesh := not na(time(timeframe.period, crSesh, gmt_tz))
+else
+    if session.isfirstbar
+        or_sesh := true
+    else if not session.isfirstbar and new_tf
+        or_sesh := false
+
+or_start = or_sesh and not or_sesh[1]
+or_end = or_sesh[1] and not or_sesh
+
+if or_start and showOR
+    for targ in up_targs
+        if showHist == false
+            targ.ln.delete()
+        targ.lab.delete()
+
+    for targ in down_targs
+        if showHist == false
+            targ.ln.delete()
+        targ.lab.delete()
+
+    for lab in signals
+        if showHist == false
+            lab.delete()
+
+    if showHist == false
+        or_bx.delete()
+        h_ln.ln.delete()
+        l_ln.ln.delete()
+        m_ln.delete()
+
+    h_ln.lab.delete()
+    l_ln.lab.delete()
+    up_targs.clear()
+    down_targs.clear()
+
+    orh := high
+    orl := low
+    prev_orm := orm[1]
+    up_count := 0
+    down_count := 0
+    up_check := true
+    down_check := true
+
+    or_bx := box.new(bar_index, high, bar_index, low, bgcolor = orFillColor, border_width = 0)
+    or_token := false
+
+if or_sesh and showOR
+    if high > orh
+        orh := high
+    if low < orl
+        orl := low
+    or_bx.set_top(orh)
+    or_bx.set_bottom(orl)
+    or_bx.set_right(bar_index)
+    if orh != orl
+        or_token := true
+
+linestyle(_input) =>
+    _input == "___" ? line.style_solid :
+     _input == "- - -" ? line.style_dashed :
+     _input == ". . ." ? line.style_dotted : na
+
+if or_end and or_token and showOR
+    h_ln := target.new(line.new(bar_index, orh, bar_index, orh, color = orColor), label.new(bar_index, orh, text = "ORH", tooltip = str.tostring(orh, format.mintick), style = label.style_label_left, color = invis, textcolor = color.new(orColor, 0), size = lbl_size))
+    l_ln := target.new(line.new(bar_index, orl, bar_index, orl, color = orColor), label.new(bar_index, orl, text = "ORL", tooltip = str.tostring(orl, format.mintick), style = label.style_label_left, color = invis, textcolor = color.new(orColor, 0), size = lbl_size))
+    m_ln := line.new(bar_index, orm, bar_index, orm, style = line.style_dashed, color = orColor)
+    hst := orh + (orw * tPer)
+    lst := orl - (orw * tPer)
+    day_dir := orm > prev_orm ? 1 : orm < prev_orm ? -1 : 0
+    linefill.new(h_ln.ln, l_ln.ln, day_dir == 1 ? greenFill : day_dir == -1 ? redFill : invis)
+
+if not or_sesh and or_token and showOR
+    h_ln.ln.set_x2(bar_index)
+    l_ln.ln.set_x2(bar_index)
+    h_ln.lab.set_x(bar_index)
+    l_ln.lab.set_x(bar_index)
+    m_ln.set_x2(bar_index)
+
+if h_src > hst
+    hst := h_src
+if l_src < lst
+    lst := l_src
+
+up_max = get_1up((hst - orh) / (orw * tPer))
+down_max = get_1up((orl - lst) / (orw * tPer))
+
+up_cur = math.max(0, get_1up((h_src - orh) / (orw * tPer)))
+down_cur = math.max(0, get_1up((orl - l_src) / (orw * tPer)))
+
+if (close > orm and down_check == false)
+    down_check := true
+
+xdown = ta.crossunder(close, orl)
+xdown2 = ta.crossunder(close, orl - orw * tPer)
+if (useBias ? ((day_dir != 1 and xdown) or (day_dir == 1 and xdown2)) : ta.crossunder(close, orl)) and down_check
+    down_signal := true
+    down_check := false
+
+if (close < orm and up_check == false)
+    up_check := true
+
+xup = ta.crossover(close, orh)
+xup2 = ta.crossover(close, orh + orw * tPer)
+if (useBias ? ((day_dir != -1 and xup) or (day_dir == -1 and xup2)) : ta.crossover(close, orh)) and up_check
+    up_signal := true
+    up_check := false
+
+//=============================================================================
+// OPENING RANGE DISPLAY
+//=============================================================================
+
+if not or_sesh and or_token and showOR
+    if up_count < up_max and tTog
+        for i = (up_count + 1) to up_max
+            up_targs.push(target.new(
+              line.new(bar_index - 1, (orh + orw * tPer * i), bar_index, (orh + (orw * tPer * i)), color = green, style = linestyle(tStyle)),
+              label.new(bar_index, (orh + orw * tPer * i), text = str.tostring(i), tooltip = str.tostring(orh + orw * tPer * i, format.mintick), style = label.style_label_left, color = invis, textcolor = color.new(green, 0), size = lbl_size)))
+            if i == up_max
+                up_count := up_max
+    if down_count < down_max and tTog
+        for i = (down_count + 1) to down_max
+            down_targs.push(target.new(
+              line.new(bar_index - 1, (orl - orw * tPer * i), bar_index, (orl - (orw * tPer * i)), color = red, style = linestyle(tStyle)),
+              label.new(bar_index, (orl - orw * tPer * i), text = str.tostring(i), tooltip = str.tostring(orl - orw * tPer * i, format.mintick), style = label.style_label_left, color = invis, textcolor = color.new(red, 0), size = lbl_size)))
+            if i == down_max
+                down_count := down_max
+
+if tDispType == "Extended" and tTog
+    for targ in up_targs
+        targ.ln.set_x2(bar_index)
+        targ.lab.set_x(bar_index)
+    for targ in down_targs
+        targ.ln.set_x2(bar_index)
+        targ.lab.set_x(bar_index)
+
+if tDispType == "Adaptive" and tTog
+    for targ in up_targs
+        if targ.ln.get_y1() <= (orh + (orw * tPer * (up_cur))) and targ.ln.get_y1() >= (orh + (orw * tPer * (up_cur - 2)))
+            targ.ln.set_x2(bar_index + 1)
+            targ.lab.set_x(bar_index + 1)
+    for targ in down_targs
+        if targ.ln.get_y1() <= (orl - (orw * tPer * (down_cur - 2))) and targ.ln.get_y1() >= (orl - (orw * tPer * (down_cur)))
+            targ.ln.set_x2(bar_index + 1)
+            targ.lab.set_x(bar_index + 1)
+
+if up_signal and sigTog
+    signals.push(label.new(bar_index, orl,
+      style = label.style_label_center,
+      text = "\n▲",
+      color = invis,
+      textcolor = upSigColor,
+      size = sig_size))
+
+if down_signal and sigTog
+    signals.push(label.new(bar_index, orh,
+      style = label.style_label_center,
+      text = "▼\n",
+      color = invis,
+      textcolor = downSigColor,
+      size = sig_size))
+
+//=============================================================================
+// ICT KILLZONE FUNCTIONS
+//=============================================================================
+
+get_box_color(color c) =>
+    color.new(c, box_transparency)
+
+get_text_color(color c) =>
+    color.new(c, text_transparency)
+
+del_kz(kz k) =>
+    if k._box.size() > max_days
+        k._box.pop().delete()
+    if k._hi_line.size() > max_days
+        k._hi_line.pop().delete()
+        k._lo_line.pop().delete()
+        k._hi_valid.pop()
+        k._lo_valid.pop()
+        if show_midpoints
+            k._md_line.pop().delete()
+            k._md_valid.pop()
+    if k._hi_label.size() > max_days
+        k._hi_label.pop().delete()
+        k._lo_label.pop().delete()
+
+adjust_in_kz(kz kz, bool t) =>
+    if t
+        kzBox0 = kz._box.get(0)
+        kzBox0.set_right(time)
+        newTop = math.max(kzBox0.get_top(), high)
+        kzBox0.set_top(newTop)
+        newBottom = math.min(kzBox0.get_bottom(), low)
+        kzBox0.set_bottom(newBottom)
+
+        kz._range_current := newTop - newBottom
+
+        if show_pivots and kz._hi_line.size() > 0
+            kzHiLine0 = kz._hi_line.get(0)
+            kzHiLine0.set_x2(time)
+            if high > kzHiLine0.get_y1()
+                kzHiLine0.set_xy1(time, high)
+                kzHiLine0.set_xy2(time, high)
+
+            kzLoLine0 = kz._lo_line.get(0)
+            kzLoLine0.set_x2(time)
+            if low < kzLoLine0.get_y1()
+                kzLoLine0.set_xy1(time, low)
+                kzLoLine0.set_xy2(time, low)
+
+            if show_midpoints
+                kzMidLine0 = kz._md_line.get(0)
+                kzMidLine0.set_x2(time)
+                kzMidLine0.set_xy1(time, math.avg(kzHiLine0.get_y2(), kzLoLine0.get_y2()))
+                kzMidLine0.set_xy2(time, math.avg(kzHiLine0.get_y2(), kzLoLine0.get_y2()))
+
+        if show_labels and kz._hi_label.size() > 0
+            if label_right
+                kz._hi_label.get(0).set_x(time)
+                kz._lo_label.get(0).set_x(time)
+            if high > kz._hi_label.get(0).get_y()
+                kz._hi_label.get(0).set_xy(time, high)
+            if low < kz._lo_label.get(0).get_y()
+                kz._lo_label.get(0).set_xy(time, low)
+
+adjust_out_kz(kz kz, bool t, bool t_prev) =>
+    boxCount = kz._box.size()
+    if not t and boxCount > 0
+        if t_prev
+            array.unshift(kz._range_store, kz._range_current)
+            if kz._range_store.size() > 5
+                kz._range_store.pop()
+
+    if show_pivots and boxCount > 0
+        for i = 0 to boxCount - 1 by 1
+            if not ext_current or i == 0
+                kzHiValid = kz._hi_valid.get(i)
+                if ext_past or kzHiValid
+                    kz._hi_line.get(i).set_x2(time)
+                    if show_labels and label_right
+                        kz._hi_label.get(i).set_x(time)
+                if kzHiValid and high > kz._hi_line.get(i).get_y1()
+                    if use_alerts and i == 0
+                        alert("Broke " + kz._title + " High", alert.freq_once_per_bar)
+                    kz._hi_valid.set(i, false)
+                    if show_labels and label_right
+                        kz._hi_label.get(i).set_style(label.style_label_down)
+
+                kzLoValid = kz._lo_valid.get(i)
+                if ext_past or kzLoValid
+                    kz._lo_line.get(i).set_x2(time)
+                    if show_labels and label_right
+                        kz._lo_label.get(i).set_x(time)
+                if kzLoValid and low < kz._lo_line.get(i).get_y1()
+                    if use_alerts and i == 0
+                        alert("Broke " + kz._title + " Low", alert.freq_once_per_bar)
+                    kz._lo_valid.set(i, false)
+                    if show_labels and label_right
+                        kz._lo_label.get(i).set_style(label.style_label_up)
+
+                if show_midpoints and not t
+                    if stop_midpoints ? kz._md_valid.get(i) : true
+                        kz._md_line.get(i).set_x2(time)
+                        if kz._md_valid.get(i) and low <= kz._md_line.get(i).get_y1() and high >= kz._md_line.get(i).get_y1()
+                            kz._md_valid.set(i, false)
+            else
+                break
+
+method manage_kz(kz_helper this) =>
+    kz kz = this._kz
+    c = this.c
+    string box_txt = this.box_txt
+    string hi_txt = this.hi_txt
+    string lo_txt = this.lo_txt
+
+    t = not na(time("", this.session, gmt_tz))
+    t_prev = not na(time("", this.session, gmt_tz, bars_back = 1))
+    if t and not t_prev
+        _c = get_box_color(c)
+        _t = get_text_color(c)
+        kz._box.unshift(box.new(time, high, time, low, xloc = xloc.bar_time, border_color = show_kz ? _c : na, bgcolor = show_kz ? _c : na, text = show_kz and show_kz_text ? box_txt : na, text_color = _t))
+
+        if show_pivots
+            kz._hi_line.unshift(line.new(time, high, time, high, xloc = xloc.bar_time, style = kzp_style, color = c, width = kzp_width))
+            kz._lo_line.unshift(line.new(time, low, time, low, xloc = xloc.bar_time, style = kzp_style, color = c, width = kzp_width))
+            if show_midpoints
+                kz._md_line.unshift(line.new(time, math.avg(high, low), time, math.avg(high, low), xloc = xloc.bar_time, style = kzm_style, color = c, width = kzm_width))
+                array.unshift(kz._md_valid, true)
+
+            array.unshift(kz._hi_valid, true)
+            array.unshift(kz._lo_valid, true)
+
+            if show_labels
+                _hi_txt = label_price ? str.format("{0} ({1})", hi_txt, high) : hi_txt
+                _lo_txt = label_price ? str.format("{0} ({1})", lo_txt, low) : lo_txt
+                if label_right
+                    kz._hi_label.unshift(label.new(time, high, _hi_txt, xloc = xloc.bar_time, color = transparent, textcolor = txt_color, style = label.style_label_left, size = lbl_size))
+                    kz._lo_label.unshift(label.new(time, low, _lo_txt, xloc = xloc.bar_time, color = transparent, textcolor = txt_color, style = label.style_label_left, size = lbl_size))
+                else
+                    kz._hi_label.unshift(label.new(time, high, _hi_txt, xloc = xloc.bar_time, color = transparent, textcolor = txt_color, style = label.style_label_down, size = lbl_size))
+                    kz._lo_label.unshift(label.new(time, low, _lo_txt, xloc = xloc.bar_time, color = transparent, textcolor = txt_color, style = label.style_label_up, size = lbl_size))
+
+        del_kz(kz)
+    adjust_in_kz(kz, t)
+    adjust_out_kz(kz, t, t_prev)
+
+// Execute Killzone Logic
+for [_, value] in _kz
+    manage_kz(value)
+
+//=============================================================================
+// ALERTS
+//=============================================================================
+
+alertcondition(up_signal, title = "Bullish Breakout", message = "Price broke above Opening Range High")
+alertcondition(down_signal, title = "Bearish Breakout", message = "Price broke below Opening Range Low")
+alertcondition(up_signal or down_signal, title = "Any Breakout", message = "Price broke out of Opening Range")
+alertcondition(bullishNoWick, title = "Bullish No-Wick Candle", message = "Bullish candle with no lower wick detected")
+alertcondition(bearishNoWick, title = "Bearish No-Wick Candle", message = "Bearish candle with no upper wick detected")
