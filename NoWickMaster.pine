@@ -1,5 +1,5 @@
-// NoWickMaster - Combined ORB, No-Wick Candles, FVG & iFVG Indicator
-// Based on LuxAlgo ORB, ICT Killzones, and FVG concepts
+// NoWickMaster - Combined ORB, No-Wick Candles, FVG, iFVG & Equal Highs/Lows Indicator
+// Based on LuxAlgo ORB, ICT Killzones, FVG concepts, and Equal Highs/Lows by OutofOptions
 
 //@version=6
 indicator("NoWickMaster", shorttitle = "NoWickMaster", overlay = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 500)
@@ -46,6 +46,26 @@ day_ma(_start, _type, s, l) =>
     if _type == "VWMA"
         ma := ta.vwma(s, v_len)
     ma
+
+// Helper function for one bar duration in milliseconds
+oneBar() =>
+    timeframe.in_seconds(timeframe.period) * 1000
+
+//=============================================================================
+// INPUTS - EQUAL HIGHS & LOWS
+//=============================================================================
+
+var g_EQL = "═══════════ Equal Highs & Lows ═══════════"
+showEQL = input.bool(true, "Show Equal Highs & Lows", group = g_EQL)
+eqlMinCandleDist = input.int(0, "Minimum Distance (candles/bars)", minval = 0, step = 1, tooltip = "Minimum distance between the candles forming equal highs/lows", group = g_EQL)
+eqlPlotNearest = input.bool(false, "Show Nearest EQL/EQH Price", tooltip = "If enabled the closest equal high/low price will be highlighted in the price bar", group = g_EQL)
+eqlRealtime = input.bool(false, "Realtime Mode", tooltip = "If enabled will identify Equal Highs/Lows before candle close", group = g_EQL)
+
+eqlLineColorHigh = input.color(color.green, "Line Color: Highs", group = g_EQL, inline = "eqlcolor")
+eqlLineColorLow = input.color(color.red, "Lows", group = g_EQL, inline = "eqlcolor")
+eqlLineWidth = input.int(2, "Linienbreite", minval = 1, maxval = 5, step = 1, group = g_EQL, inline = "eqlline")
+eqlLineStyle = input.string("Solid", "Stil", options = ["Solid", "Dotted", "Dashed"], group = g_EQL, inline = "eqlline")
+eqlExtendRight = input.bool(true, "Extend Line Right", group = g_EQL, tooltip = "Whether or not to extend the Equal high/low lines right")
 
 //=============================================================================
 // INPUTS - NO WICK CANDLES
@@ -272,6 +292,12 @@ type kz_helper
     string hi_txt
     string lo_txt
 
+// Type for Equal Highs/Lows liquidity tracking
+type liquidity
+    float price
+    int time
+    int otime
+
 //=============================================================================
 // VARIABLES
 //=============================================================================
@@ -280,6 +306,17 @@ var invis = color.rgb(0, 0, 0, 100)
 var transparent = #ffffff00
 var lbl_size = get_size(txtSize)
 var sig_size = get_size(sigSize)
+
+// Equal Highs/Lows Variables
+var array<liquidity> eqlHi = array.new<liquidity>()
+var array<liquidity> eqlLo = array.new<liquidity>()
+var eqlUPlines = map.new<float, line>()
+var eqlDWlines = map.new<float, line>()
+var simple int eqlMinDistance = oneBar() * eqlMinCandleDist
+var string eqlLineRenderStyle = eqlLineStyle == "Solid" ? line.style_solid : eqlLineStyle == "Dotted" ? line.style_dotted : line.style_dashed
+
+var float lastEQH = 0.0
+var float lastEQL = 0.0
 
 // FVG Arrays
 var array<FVGBox> bullFVGs = array.new<FVGBox>()
@@ -318,6 +355,93 @@ var line m_ln = na
 
 var ext_current = ext_which == "Most Recent"
 var ext_past = ext_pivots == "Past Mitigation"
+
+//=============================================================================
+// EQUAL HIGHS & LOWS DETECTION
+//=============================================================================
+
+float eqlHprice = 0.0
+float eqlLprice = 0.0
+
+if showEQL
+    // Process Equal Highs
+    while eqlHi.size() > 0
+        eqlHprice := eqlHi.last().price
+        if eqlHprice < high
+            line ln = eqlUPlines.get(eqlHprice)
+            if not na(ln)
+                lastEQH := 0
+                ln.delete()
+                eqlUPlines.remove(eqlHprice)
+            eqlHi.pop()
+            eqlHprice := 0
+        else
+            if lastEQH == 0 and eqlPlotNearest
+                keys = eqlUPlines.keys()
+                if keys.size() > 0
+                    lastEQH := keys.last()
+            break
+    
+    // Process Equal Lows
+    while eqlLo.size() > 0
+        eqlLprice := eqlLo.last().price
+        if eqlLprice > low
+            line ln = eqlDWlines.get(eqlLprice)
+            if not na(ln)
+                lastEQL := 0
+                ln.delete()
+                eqlDWlines.remove(eqlLprice)
+            eqlLprice := 0
+            eqlLo.pop()
+        else
+            if lastEQL == 0 and eqlPlotNearest
+                keys = eqlDWlines.keys()
+                if keys.size() > 0
+                    lastEQL := keys.last()
+            break
+    
+    if eqlRealtime or barstate.isconfirmed
+        int otime = time
+        
+        // Check for Equal Highs
+        if eqlHprice == high
+            liquidity last = eqlHi.last()
+            int tm = math.min(last.otime, last.time)
+            if (time - tm) > eqlMinDistance
+                if eqlPlotNearest
+                    lastEQH := eqlHprice
+                line ln = eqlUPlines.get(high)
+                if na(ln)
+                    eqlUPlines.put(eqlHprice, line.new(x1 = tm, y1 = eqlHprice, x2 = time, y2 = eqlHprice, width = eqlLineWidth, color = eqlLineColorHigh, style = eqlLineRenderStyle, xloc = xloc.bar_time, extend = eqlExtendRight ? extend.right : extend.none))
+                else
+                    ln.set_x2(time)
+            else
+                otime := tm
+        
+        eqlHi.push(liquidity.new(high, time, otime))
+        
+        otime := time
+        
+        // Check for Equal Lows
+        if eqlLprice == low
+            liquidity last = eqlLo.last()
+            int tm = math.min(last.otime, last.time)
+            if (time - tm) > eqlMinDistance
+                line ln = eqlDWlines.get(eqlLprice)
+                if eqlPlotNearest
+                    lastEQL := eqlLprice
+                if na(ln)
+                    eqlDWlines.put(eqlLprice, line.new(x1 = tm, y1 = eqlLprice, x2 = time, y2 = eqlLprice, width = eqlLineWidth, color = eqlLineColorLow, style = eqlLineRenderStyle, xloc = xloc.bar_time, extend = eqlExtendRight ? extend.right : extend.none))
+                else
+                    ln.set_x2(time)
+            else
+                otime := last.otime
+        
+        eqlLo.push(liquidity.new(low, time, otime))
+
+// Plot EQH/EQL on price scale
+plot(showEQL and eqlPlotNearest ? lastEQH : na, "EQH", color = eqlLineColorHigh, display = display.price_scale)
+plot(showEQL and eqlPlotNearest ? lastEQL : na, "EQL", color = eqlLineColorLow, display = display.price_scale)
 
 //=============================================================================
 // NO WICK CANDLE DETECTION
