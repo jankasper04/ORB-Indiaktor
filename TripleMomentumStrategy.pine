@@ -81,8 +81,6 @@ target3Enabled = input.bool(true, "Target 3", inline="t3", group=grp_targets)
 target3RR = input.float(3.0, "R:R", inline="t3", group=grp_targets)
 target3Color = input.color(color.teal, "", inline="t3", group=grp_targets)
 
-exitTarget = input.string("Target 2", "Exit at Target", options=["Target 1", "Target 2", "Target 3"], group=grp_targets)
-
 // ==========================================
 // BREAKEVEN SETTINGS
 // ==========================================
@@ -213,16 +211,6 @@ cleanupDrawings() =>
     box.delete(box3)
 
 // ==========================================
-// GET EXIT TARGET PRICE
-// ==========================================
-getExitPrice() =>
-    switch exitTarget
-        "Target 1" => target1Price
-        "Target 2" => target2Price
-        "Target 3" => target3Price
-        => target2Price
-
-// ==========================================
 // LONG ENTRY
 // ==========================================
 if buySignal and strategy.position_size <= 0
@@ -251,9 +239,9 @@ if buySignal and strategy.position_size <= 0
     // Breakeven Trigger
     beTriggerPrice := entryPrice + (riskAmount * breakevenTriggerRR)
     
-    // Enter Long
+    // Enter Long with SL and TP (Target 2)
     strategy.entry("Long", strategy.long)
-    strategy.exit("Long Exit", "Long", stop=stopLossPrice, limit=getExitPrice())
+    strategy.exit("Long Exit", "Long", stop=stopLossPrice, limit=target2Price)
     
     // Draw visuals
     if showSLTPLines
@@ -318,9 +306,9 @@ if sellSignal and strategy.position_size >= 0
     // Breakeven Trigger
     beTriggerPrice := entryPrice - (riskAmount * breakevenTriggerRR)
     
-    // Enter Short
+    // Enter Short with SL and TP (Target 2)
     strategy.entry("Short", strategy.short)
-    strategy.exit("Short Exit", "Short", stop=stopLossPrice, limit=getExitPrice())
+    strategy.exit("Short Exit", "Short", stop=stopLossPrice, limit=target2Price)
     
     // Draw visuals
     if showSLTPLines
@@ -402,7 +390,7 @@ if useBreakeven and strategy.position_size != 0 and not breakevenActivated
     if isLong and high >= beTriggerPrice
         breakevenActivated := true
         stopLossPrice := entryPrice
-        strategy.exit("Long Exit", "Long", stop=entryPrice, limit=getExitPrice())
+        strategy.exit("Long Exit", "Long", stop=entryPrice, limit=target2Price)
         
         // Update SL line
         if showSLTPLines and not na(slLine)
@@ -419,7 +407,7 @@ if useBreakeven and strategy.position_size != 0 and not breakevenActivated
     if not isLong and low <= beTriggerPrice
         breakevenActivated := true
         stopLossPrice := entryPrice
-        strategy.exit("Short Exit", "Short", stop=entryPrice, limit=getExitPrice())
+        strategy.exit("Short Exit", "Short", stop=entryPrice, limit=target2Price)
         
         // Update SL line
         if showSLTPLines and not na(slLine)
