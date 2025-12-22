@@ -1,0 +1,428 @@
+// This work is licensed under a Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0) https://creativecommons.org/licenses/by-nc-sa/4.0/
+// Opening Range Breakout Strategy - 15min OR + 5min Candle Breakout
+// Based on LuxAlgo Opening Range concept
+
+//@version=6
+strategy("Opening Range Breakout Strategy", shorttitle = "ORB Strat", overlay = true, initial_capital = 10000, default_qty_type = strategy.percent_of_equity, default_qty_value = 100, pyramiding = 0, process_orders_on_close = false, calc_on_every_tick = false)
+
+//---------------------------------------------------------------------------------------------------------------------}
+// INPUTS
+//---------------------------------------------------------------------------------------------------------------------{
+
+// ══════════════════════════════════════════════════════════════════════════════
+// OPENING RANGE SETTINGS
+// ══════════════════════════════════════════════════════════════════════════════
+grpOR = "═══ Opening Range Settings ═══"
+orPeriod = input.int(15, title = "Opening Range Period (Minutes)", minval = 5, maxval = 60, group = grpOR, tooltip = "Duration of the Opening Range in minutes. Default: 15 minutes")
+orSession = input.session("0930-0945", title = "Opening Range Session", group = grpOR, tooltip = "Custom session time for Opening Range. Format: HHMM-HHMM")
+orTimezone = input.string("UTC-5", title = "Timezone", group = grpOR, options = ["UTC-10", "UTC-8", "UTC-7", "UTC-6", "UTC-5", "UTC-4", "UTC-3", "UTC+0", "UTC+1", "UTC+2", "UTC+3", "UTC+4", "UTC+5", "UTC+8", "UTC+9"], tooltip = "Timezone for the Opening Range session (UTC-5 = US Eastern)")
+
+// ══════════════════════════════════════════════════════════════════════════════
+// BREAKOUT SETTINGS
+// ══════════════════════════════════════════════════════════════════════════════
+grpBreakout = "═══ Breakout Settings ═══"
+breakoutTF = input.timeframe("5", title = "Breakout Candle Timeframe", group = grpBreakout, tooltip = "Timeframe for breakout confirmation candle. Default: 5 minutes")
+breakoutType = input.string("Close Above/Below", title = "Breakout Confirmation", group = grpBreakout, options = ["Close Above/Below", "Wick Above/Below"], tooltip = "Close: Price must close beyond OR level\nWick: High/Low must break OR level")
+allowLong = input.bool(true, title = "Allow Long Trades", group = grpBreakout)
+allowShort = input.bool(true, title = "Allow Short Trades", group = grpBreakout)
+onlyFirstBreakout = input.bool(true, title = "Only First Breakout per Session", group = grpBreakout, tooltip = "If enabled, only takes the first breakout signal per day")
+
+// ══════════════════════════════════════════════════════════════════════════════
+// STOP LOSS SETTINGS
+// ══════════════════════════════════════════════════════════════════════════════
+grpSL = "═══ Stop Loss Settings ═══"
+slType = input.string("50% Level (ORM)", title = "Stop Loss Type", group = grpSL, options = ["50% Level (ORM)", "ATR Based", "Market Structure"], tooltip = "50% Level: Stop at middle of Opening Range (ORM)\nATR Based: Stop based on ATR multiplier\nMarket Structure: Stop at swing high/low")
+atrPeriod = input.int(14, title = "ATR Period", minval = 1, group = grpSL)
+atrMultiplier = input.float(1.5, title = "ATR Multiplier", minval = 0.1, step = 0.1, group = grpSL, tooltip = "Multiplier for ATR-based stop loss")
+swingLookback = input.int(5, title = "Swing Lookback (Market Structure)", minval = 2, maxval = 20, group = grpSL, tooltip = "Number of bars to look back for swing high/low detection")
+slBuffer = input.float(0.0, title = "SL Buffer (Points)", minval = 0, group = grpSL, tooltip = "Additional buffer added to stop loss level")
+
+// ══════════════════════════════════════════════════════════════════════════════
+// TAKE PROFIT SETTINGS
+// ══════════════════════════════════════════════════════════════════════════════
+grpTP = "═══ Take Profit Settings ═══"
+tpType = input.string("1st Standard Deviation", title = "Take Profit Type", group = grpTP, options = ["1st Standard Deviation", "2nd Standard Deviation", "Risk:Reward 1:1", "Risk:Reward 1:2", "Risk:Reward 1:3", "Custom R:R"], tooltip = "Standard Deviation: Based on OR width\nRisk:Reward: Based on SL distance")
+sdMultiplier = input.float(1.0, title = "Standard Deviation Multiplier", minval = 0.5, step = 0.25, group = grpTP, tooltip = "Multiplier for standard deviation targets (1.0 = 1 SD, 2.0 = 2 SD)")
+customRR = input.float(1.5, title = "Custom Risk:Reward Ratio", minval = 0.5, step = 0.1, group = grpTP, tooltip = "Custom R:R ratio when 'Custom R:R' is selected")
+useTrailingTP = input.bool(false, title = "Use Trailing Stop at TP", group = grpTP, tooltip = "When TP is hit, convert to trailing stop instead of closing")
+trailingPercent = input.float(50, title = "Trailing Stop % of Profit", minval = 10, maxval = 90, group = grpTP, tooltip = "Percentage of profit to trail when trailing stop is activated")
+
+// ══════════════════════════════════════════════════════════════════════════════
+// FILTER SETTINGS
+// ══════════════════════════════════════════════════════════════════════════════
+grpFilter = "═══ Trade Filters ═══"
+useDirectionBias = input.bool(false, title = "Use Direction Bias", group = grpFilter, tooltip = "Only take trades in direction of previous day's OR midpoint comparison")
+useTrendFilter = input.bool(false, title = "Use EMA Trend Filter", group = grpFilter)
+emaPeriod = input.int(50, title = "EMA Period for Trend", minval = 10, group = grpFilter)
+minORSize = input.float(0, title = "Minimum OR Size (Points)", minval = 0, group = grpFilter, tooltip = "Minimum Opening Range size required for trade entry")
+maxORSize = input.float(0, title = "Maximum OR Size (Points)", minval = 0, group = grpFilter, tooltip = "Maximum Opening Range size allowed (0 = no limit)")
+
+// ══════════════════════════════════════════════════════════════════════════════
+// VISUAL SETTINGS
+// ══════════════════════════════════════════════════════════════════════════════
+grpVisual = "═══ Visual Settings ═══"
+showOR = input.bool(true, title = "Show Opening Range Box", group = grpVisual)
+showORLevels = input.bool(true, title = "Show OR High/Low/Mid Lines", group = grpVisual)
+showTargets = input.bool(true, title = "Show Target Levels", group = grpVisual)
+showSLLevel = input.bool(true, title = "Show Stop Loss Level", group = grpVisual)
+bullColor = input.color(color.new(#089981, 60), title = "Bullish Color", group = grpVisual)
+bearColor = input.color(color.new(#f23645, 60), title = "Bearish Color", group = grpVisual)
+orBoxColor = input.color(color.new(#787b86, 80), title = "OR Box Fill Color", group = grpVisual)
+orLineColor = input.color(#787b86, title = "OR Lines Color", group = grpVisual)
+
+// ══════════════════════════════════════════════════════════════════════════════
+// TIME SETTINGS
+// ══════════════════════════════════════════════════════════════════════════════
+grpTime = "═══ Trading Hours ═══"
+useTimeFilter = input.bool(true, title = "Use Trading Hours Filter", group = grpTime)
+tradingStart = input.session("0945-1600", title = "Trading Session", group = grpTime, tooltip = "Time window when trades are allowed (after OR period)")
+closeEOD = input.bool(true, title = "Close Positions at End of Day", group = grpTime)
+eodTime = input.session("1555-1600", title = "EOD Close Time", group = grpTime)
+
+//---------------------------------------------------------------------------------------------------------------------}
+// VARIABLES
+//---------------------------------------------------------------------------------------------------------------------{
+
+// Opening Range Variables
+var float orHigh = na
+var float orLow = na
+var float orMid = na
+var float orWidth = na
+var float prevOrMid = na
+var bool orComplete = false
+var bool orActive = false
+var int orStartBar = na
+
+// Trade Management Variables
+var bool longTaken = false
+var bool shortTaken = false
+var float entryPrice = na
+var float stopLossLevel = na
+var float takeProfitLevel = na
+var int tradeDirection = 0  // 1 = Long, -1 = Short
+
+// Visual Elements
+var box orBox = na
+var line orHighLine = na
+var line orLowLine = na
+var line orMidLine = na
+var line slLine = na
+var line tpLine = na
+var label orHighLabel = na
+var label orLowLabel = na
+var label orMidLabel = na
+
+//---------------------------------------------------------------------------------------------------------------------}
+// FUNCTIONS
+//---------------------------------------------------------------------------------------------------------------------{
+
+// Check if current bar is within the Opening Range session
+isORSession() =>
+    not na(time(timeframe.period, orSession, orTimezone))
+
+// Check if current bar is within trading hours
+isTradingHours() =>
+    useTimeFilter ? not na(time(timeframe.period, tradingStart, orTimezone)) : true
+
+// Check if it's end of day close time
+isEODClose() =>
+    closeEOD ? not na(time(timeframe.period, eodTime, orTimezone)) : false
+
+// Calculate ATR
+atrValue = ta.atr(atrPeriod)
+
+// Calculate EMA for trend filter
+emaValue = ta.ema(close, emaPeriod)
+
+// Pre-calculate swing high/low values outside of functions (Pine Script requirement)
+swingHighValue = ta.highest(high, swingLookback)
+swingLowValue = ta.lowest(low, swingLookback)
+
+// Calculate stop loss based on selected type
+calcStopLoss(isLong, entry) =>
+    float sl = na
+    if slType == "50% Level (ORM)"
+        sl := orMid
+    else if slType == "ATR Based"
+        sl := isLong ? entry - (atrValue * atrMultiplier) : entry + (atrValue * atrMultiplier)
+    else if slType == "Market Structure"
+        if isLong
+            sl := na(swingLowValue) ? orLow : math.min(swingLowValue, orLow)
+        else
+            sl := na(swingHighValue) ? orHigh : math.max(swingHighValue, orHigh)
+    // Add buffer
+    sl := isLong ? sl - slBuffer : sl + slBuffer
+    sl
+
+// Calculate take profit based on selected type
+calcTakeProfit(isLong, entry, sl) =>
+    float tp = na
+    float riskDistance = math.abs(entry - sl)
+    
+    if tpType == "1st Standard Deviation"
+        tp := isLong ? orHigh + (orWidth * sdMultiplier) : orLow - (orWidth * sdMultiplier)
+    else if tpType == "2nd Standard Deviation"
+        tp := isLong ? orHigh + (orWidth * sdMultiplier * 2) : orLow - (orWidth * sdMultiplier * 2)
+    else if tpType == "Risk:Reward 1:1"
+        tp := isLong ? entry + riskDistance : entry - riskDistance
+    else if tpType == "Risk:Reward 1:2"
+        tp := isLong ? entry + (riskDistance * 2) : entry - (riskDistance * 2)
+    else if tpType == "Risk:Reward 1:3"
+        tp := isLong ? entry + (riskDistance * 3) : entry - (riskDistance * 3)
+    else if tpType == "Custom R:R"
+        tp := isLong ? entry + (riskDistance * customRR) : entry - (riskDistance * customRR)
+    tp
+
+// Check direction bias
+checkDirectionBias(isLong) =>
+    if not useDirectionBias
+        true
+    else
+        bias = orMid > prevOrMid ? 1 : orMid < prevOrMid ? -1 : 0
+        isLong ? bias >= 0 : bias <= 0
+
+// Check trend filter
+checkTrendFilter(isLong) =>
+    if not useTrendFilter
+        true
+    else
+        isLong ? close > emaValue : close < emaValue
+
+// Check OR size filter
+checkORSizeFilter() =>
+    sizeOK = true
+    if minORSize > 0
+        sizeOK := orWidth >= minORSize
+    if maxORSize > 0 and sizeOK
+        sizeOK := orWidth <= maxORSize
+    sizeOK
+
+//---------------------------------------------------------------------------------------------------------------------}
+// OPENING RANGE CALCULATION
+//---------------------------------------------------------------------------------------------------------------------{
+
+// Detect OR session start
+orSessionActive = isORSession()
+orStart = orSessionActive and not orSessionActive[1]
+orEnd = not orSessionActive and orSessionActive[1]
+
+// Reset on new session start
+if orStart
+    // Save previous OR mid for bias calculation
+    if not na(orMid)
+        prevOrMid := orMid
+    
+    // Reset OR values
+    orHigh := high
+    orLow := low
+    orComplete := false
+    orActive := true
+    orStartBar := bar_index
+    longTaken := false
+    shortTaken := false
+    tradeDirection := 0
+    
+    // Delete old visual elements
+    if showOR
+        box.delete(orBox)
+        orBox := box.new(bar_index, high, bar_index, low, border_color = orLineColor, bgcolor = orBoxColor, border_width = 1)
+    
+    if showORLevels
+        line.delete(orHighLine)
+        line.delete(orLowLine)
+        line.delete(orMidLine)
+        label.delete(orHighLabel)
+        label.delete(orLowLabel)
+        label.delete(orMidLabel)
+
+// Update OR during session
+if orSessionActive and orActive
+    orHigh := math.max(orHigh, high)
+    orLow := math.min(orLow, low)
+    orMid := math.avg(orHigh, orLow)
+    orWidth := orHigh - orLow
+    
+    // Update OR box
+    if showOR and not na(orBox)
+        box.set_top(orBox, orHigh)
+        box.set_bottom(orBox, orLow)
+        box.set_right(orBox, bar_index)
+
+// Finalize OR when session ends
+if orEnd and orActive
+    orComplete := true
+    orActive := false
+    orMid := math.avg(orHigh, orLow)
+    orWidth := orHigh - orLow
+    
+    // Create OR level lines
+    if showORLevels
+        orHighLine := line.new(orStartBar, orHigh, bar_index + 50, orHigh, color = orLineColor, width = 2)
+        orLowLine := line.new(orStartBar, orLow, bar_index + 50, orLow, color = orLineColor, width = 2)
+        orMidLine := line.new(orStartBar, orMid, bar_index + 50, orMid, color = orLineColor, width = 1, style = line.style_dashed)
+        
+        orHighLabel := label.new(bar_index + 5, orHigh, "ORH: " + str.tostring(orHigh, format.mintick), style = label.style_label_left, color = color.new(color.white, 100), textcolor = orLineColor, size = size.small)
+        orLowLabel := label.new(bar_index + 5, orLow, "ORL: " + str.tostring(orLow, format.mintick), style = label.style_label_left, color = color.new(color.white, 100), textcolor = orLineColor, size = size.small)
+        orMidLabel := label.new(bar_index + 5, orMid, "ORM (50%): " + str.tostring(orMid, format.mintick), style = label.style_label_left, color = color.new(color.white, 100), textcolor = orLineColor, size = size.small)
+
+// Extend OR lines
+if orComplete and showORLevels
+    if not na(orHighLine)
+        line.set_x2(orHighLine, bar_index + 10)
+        line.set_x2(orLowLine, bar_index + 10)
+        line.set_x2(orMidLine, bar_index + 10)
+        label.set_x(orHighLabel, bar_index + 5)
+        label.set_x(orLowLabel, bar_index + 5)
+        label.set_x(orMidLabel, bar_index + 5)
+
+//---------------------------------------------------------------------------------------------------------------------}
+// BREAKOUT DETECTION & ENTRY LOGIC
+//---------------------------------------------------------------------------------------------------------------------{
+
+// Get breakout timeframe data
+[breakoutHigh, breakoutLow, breakoutClose] = request.security(syminfo.tickerid, breakoutTF, [high, low, close])
+
+// Breakout conditions
+longBreakout = breakoutType == "Close Above/Below" ? breakoutClose > orHigh : breakoutHigh > orHigh
+shortBreakout = breakoutType == "Close Above/Below" ? breakoutClose < orLow : breakoutLow < orLow
+
+// Entry conditions - all on single lines to avoid line continuation issues
+canTradeLong = orComplete and allowLong and isTradingHours() and not isEODClose() and checkORSizeFilter() and checkDirectionBias(true) and checkTrendFilter(true)
+canTradeShort = orComplete and allowShort and isTradingHours() and not isEODClose() and checkORSizeFilter() and checkDirectionBias(false) and checkTrendFilter(false)
+
+// Check if first breakout rule applies
+canEnterLong = canTradeLong and (onlyFirstBreakout ? not longTaken and not shortTaken : true)
+canEnterShort = canTradeShort and (onlyFirstBreakout ? not shortTaken and not longTaken : true)
+
+// Entry signals
+longSignal = longBreakout and canEnterLong and strategy.position_size == 0
+shortSignal = shortBreakout and canEnterShort and strategy.position_size == 0
+
+//---------------------------------------------------------------------------------------------------------------------}
+// TRADE EXECUTION
+//---------------------------------------------------------------------------------------------------------------------{
+
+// Long Entry
+if longSignal
+    entryPrice := close
+    stopLossLevel := calcStopLoss(true, entryPrice)
+    takeProfitLevel := calcTakeProfit(true, entryPrice, stopLossLevel)
+    
+    strategy.entry("Long", strategy.long)
+    strategy.exit("Long Exit", "Long", stop = stopLossLevel, limit = takeProfitLevel)
+    
+    longTaken := true
+    tradeDirection := 1
+    
+    // Visual elements
+    if showSLLevel
+        line.delete(slLine)
+        slLine := line.new(bar_index, stopLossLevel, bar_index + 20, stopLossLevel, color = bearColor, width = 2, style = line.style_dotted)
+    if showTargets
+        line.delete(tpLine)
+        tpLine := line.new(bar_index, takeProfitLevel, bar_index + 20, takeProfitLevel, color = bullColor, width = 2, style = line.style_dotted)
+
+// Short Entry
+if shortSignal
+    entryPrice := close
+    stopLossLevel := calcStopLoss(false, entryPrice)
+    takeProfitLevel := calcTakeProfit(false, entryPrice, stopLossLevel)
+    
+    strategy.entry("Short", strategy.short)
+    strategy.exit("Short Exit", "Short", stop = stopLossLevel, limit = takeProfitLevel)
+    
+    shortTaken := true
+    tradeDirection := -1
+    
+    // Visual elements
+    if showSLLevel
+        line.delete(slLine)
+        slLine := line.new(bar_index, stopLossLevel, bar_index + 20, stopLossLevel, color = bearColor, width = 2, style = line.style_dotted)
+    if showTargets
+        line.delete(tpLine)
+        tpLine := line.new(bar_index, takeProfitLevel, bar_index + 20, takeProfitLevel, color = bullColor, width = 2, style = line.style_dotted)
+
+// End of Day Close
+if isEODClose() and strategy.position_size != 0
+    strategy.close_all("EOD Close")
+    tradeDirection := 0
+
+// Update visual lines
+if strategy.position_size != 0
+    if showSLLevel and not na(slLine)
+        line.set_x2(slLine, bar_index + 5)
+    if showTargets and not na(tpLine)
+        line.set_x2(tpLine, bar_index + 5)
+
+// Clean up when position closes
+if strategy.position_size == 0 and strategy.position_size[1] != 0
+    tradeDirection := 0
+
+//---------------------------------------------------------------------------------------------------------------------}
+// PLOTS & VISUALS
+//---------------------------------------------------------------------------------------------------------------------{
+
+// Plot EMA if trend filter is enabled
+plot(useTrendFilter ? emaValue : na, "Trend EMA", color = color.orange, linewidth = 2)
+
+// Plot OR levels for reference
+plot(orComplete ? orHigh : na, "OR High", color = color.new(orLineColor, 50), style = plot.style_linebr, linewidth = 1)
+plot(orComplete ? orLow : na, "OR Low", color = color.new(orLineColor, 50), style = plot.style_linebr, linewidth = 1)
+plot(orComplete ? orMid : na, "OR Mid (50%)", color = color.new(orLineColor, 70), style = plot.style_linebr, linewidth = 1)
+
+// Background color during OR session
+bgcolor(orSessionActive ? color.new(color.blue, 90) : na, title = "OR Session Background")
+
+// Background color during trading hours
+bgcolor(isTradingHours() and not orSessionActive ? color.new(color.green, 95) : na, title = "Trading Hours Background")
+
+//---------------------------------------------------------------------------------------------------------------------}
+// ALERTS
+//---------------------------------------------------------------------------------------------------------------------{
+
+alertcondition(longSignal, title = "Long Breakout Signal", message = "ORB Long Entry: Price broke above Opening Range High")
+alertcondition(shortSignal, title = "Short Breakout Signal", message = "ORB Short Entry: Price broke below Opening Range Low")
+alertcondition(orEnd, title = "Opening Range Complete", message = "Opening Range established - ORH: {{plot_0}}, ORL: {{plot_1}}")
+
+//---------------------------------------------------------------------------------------------------------------------}
+// INFO TABLE
+//---------------------------------------------------------------------------------------------------------------------{
+
+var table infoTable = table.new(position.top_right, 2, 10, bgcolor = color.new(color.black, 80), border_width = 1)
+
+if barstate.islast
+    table.cell(infoTable, 0, 0, "ORB Info", text_color = color.white, text_size = size.small)
+    table.merge_cells(infoTable, 0, 0, 1, 0)
+    
+    table.cell(infoTable, 0, 1, "OR High:", text_color = color.gray, text_size = size.tiny)
+    table.cell(infoTable, 1, 1, str.tostring(orHigh, format.mintick), text_color = color.white, text_size = size.tiny)
+    
+    table.cell(infoTable, 0, 2, "OR Low:", text_color = color.gray, text_size = size.tiny)
+    table.cell(infoTable, 1, 2, str.tostring(orLow, format.mintick), text_color = color.white, text_size = size.tiny)
+    
+    table.cell(infoTable, 0, 3, "OR Mid (50%):", text_color = color.gray, text_size = size.tiny)
+    table.cell(infoTable, 1, 3, str.tostring(orMid, format.mintick), text_color = color.white, text_size = size.tiny)
+    
+    table.cell(infoTable, 0, 4, "OR Width:", text_color = color.gray, text_size = size.tiny)
+    table.cell(infoTable, 1, 4, str.tostring(orWidth, format.mintick), text_color = color.white, text_size = size.tiny)
+    
+    table.cell(infoTable, 0, 5, "SL Type:", text_color = color.gray, text_size = size.tiny)
+    table.cell(infoTable, 1, 5, slType, text_color = color.yellow, text_size = size.tiny)
+    
+    table.cell(infoTable, 0, 6, "TP Type:", text_color = color.gray, text_size = size.tiny)
+    table.cell(infoTable, 1, 6, tpType, text_color = color.lime, text_size = size.tiny)
+    
+    table.cell(infoTable, 0, 7, "Position:", text_color = color.gray, text_size = size.tiny)
+    posText = strategy.position_size > 0 ? "LONG" : strategy.position_size < 0 ? "SHORT" : "FLAT"
+    posColor = strategy.position_size > 0 ? color.green : strategy.position_size < 0 ? color.red : color.gray
+    table.cell(infoTable, 1, 7, posText, text_color = posColor, text_size = size.tiny)
+    
+    table.cell(infoTable, 0, 8, "Entry:", text_color = color.gray, text_size = size.tiny)
+    table.cell(infoTable, 1, 8, strategy.position_size != 0 ? str.tostring(strategy.position_avg_price, format.mintick) : "N/A", text_color = color.white, text_size = size.tiny)
+    
+    table.cell(infoTable, 0, 9, "OR Complete:", text_color = color.gray, text_size = size.tiny)
+    table.cell(infoTable, 1, 9, orComplete ? "YES" : "NO", text_color = orComplete ? color.green : color.red, text_size = size.tiny)
+
+//---------------------------------------------------------------------------------------------------------------------}
+// END OF STRATEGY
+//---------------------------------------------------------------------------------------------------------------------}
