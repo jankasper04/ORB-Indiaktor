@@ -3,9 +3,7 @@
 // Based on LuxAlgo Opening Range concept
 
 //@version=6
-strategy("Opening Range Breakout Strategy", shorttitle = "ORB Strategy", overlay = true, 
-         initial_capital = 10000, default_qty_type = strategy.percent_of_equity, default_qty_value = 100,
-         pyramiding = 0, process_orders_on_close = false, calc_on_every_tick = false)
+strategy("Opening Range Breakout Strategy", shorttitle = "ORB Strat", overlay = true, initial_capital = 10000, default_qty_type = strategy.percent_of_equity, default_qty_value = 100, pyramiding = 0, process_orders_on_close = false, calc_on_every_tick = false)
 
 //---------------------------------------------------------------------------------------------------------------------}
 // INPUTS
@@ -15,71 +13,49 @@ strategy("Opening Range Breakout Strategy", shorttitle = "ORB Strategy", overlay
 // OPENING RANGE SETTINGS
 // ══════════════════════════════════════════════════════════════════════════════
 grpOR = "═══ Opening Range Settings ═══"
-orPeriod = input.int(15, title = "Opening Range Period (Minutes)", minval = 5, maxval = 60, group = grpOR, 
-           tooltip = "Duration of the Opening Range in minutes. Default: 15 minutes")
-orSession = input.session("0930-0945", title = "Opening Range Session", group = grpOR,
-            tooltip = "Custom session time for Opening Range. Format: HHMM-HHMM")
-orTimezone = input.string("UTC-5", title = "Timezone", group = grpOR, 
-             options = ["UTC-10", "UTC-8", "UTC-7", "UTC-6", "UTC-5", "UTC-4", "UTC-3", "UTC+0", "UTC+1", "UTC+2", "UTC+3", "UTC+4", "UTC+5", "UTC+8", "UTC+9"],
-             tooltip = "Timezone for the Opening Range session (UTC-5 = US Eastern)")
+orPeriod = input.int(15, title = "Opening Range Period (Minutes)", minval = 5, maxval = 60, group = grpOR, tooltip = "Duration of the Opening Range in minutes. Default: 15 minutes")
+orSession = input.session("0930-0945", title = "Opening Range Session", group = grpOR, tooltip = "Custom session time for Opening Range. Format: HHMM-HHMM")
+orTimezone = input.string("UTC-5", title = "Timezone", group = grpOR, options = ["UTC-10", "UTC-8", "UTC-7", "UTC-6", "UTC-5", "UTC-4", "UTC-3", "UTC+0", "UTC+1", "UTC+2", "UTC+3", "UTC+4", "UTC+5", "UTC+8", "UTC+9"], tooltip = "Timezone for the Opening Range session (UTC-5 = US Eastern)")
 
 // ══════════════════════════════════════════════════════════════════════════════
 // BREAKOUT SETTINGS
 // ══════════════════════════════════════════════════════════════════════════════
 grpBreakout = "═══ Breakout Settings ═══"
-breakoutTF = input.timeframe("5", title = "Breakout Candle Timeframe", group = grpBreakout,
-             tooltip = "Timeframe for breakout confirmation candle. Default: 5 minutes")
-breakoutType = input.string("Close Above/Below", title = "Breakout Confirmation", group = grpBreakout,
-               options = ["Close Above/Below", "Wick Above/Below"],
-               tooltip = "Close: Price must close beyond OR level\nWick: High/Low must break OR level")
+breakoutTF = input.timeframe("5", title = "Breakout Candle Timeframe", group = grpBreakout, tooltip = "Timeframe for breakout confirmation candle. Default: 5 minutes")
+breakoutType = input.string("Close Above/Below", title = "Breakout Confirmation", group = grpBreakout, options = ["Close Above/Below", "Wick Above/Below"], tooltip = "Close: Price must close beyond OR level\nWick: High/Low must break OR level")
 allowLong = input.bool(true, title = "Allow Long Trades", group = grpBreakout)
 allowShort = input.bool(true, title = "Allow Short Trades", group = grpBreakout)
-onlyFirstBreakout = input.bool(true, title = "Only First Breakout per Session", group = grpBreakout,
-                    tooltip = "If enabled, only takes the first breakout signal per day")
+onlyFirstBreakout = input.bool(true, title = "Only First Breakout per Session", group = grpBreakout, tooltip = "If enabled, only takes the first breakout signal per day")
 
 // ══════════════════════════════════════════════════════════════════════════════
 // STOP LOSS SETTINGS
 // ══════════════════════════════════════════════════════════════════════════════
 grpSL = "═══ Stop Loss Settings ═══"
-slType = input.string("50% Level (ORM)", title = "Stop Loss Type", group = grpSL,
-         options = ["50% Level (ORM)", "ATR Based", "Market Structure"],
-         tooltip = "50% Level: Stop at middle of Opening Range (ORM)\nATR Based: Stop based on ATR multiplier\nMarket Structure: Stop at swing high/low")
+slType = input.string("50% Level (ORM)", title = "Stop Loss Type", group = grpSL, options = ["50% Level (ORM)", "ATR Based", "Market Structure"], tooltip = "50% Level: Stop at middle of Opening Range (ORM)\nATR Based: Stop based on ATR multiplier\nMarket Structure: Stop at swing high/low")
 atrPeriod = input.int(14, title = "ATR Period", minval = 1, group = grpSL)
-atrMultiplier = input.float(1.5, title = "ATR Multiplier", minval = 0.1, step = 0.1, group = grpSL,
-                tooltip = "Multiplier for ATR-based stop loss")
-swingLookback = input.int(5, title = "Swing Lookback (Market Structure)", minval = 2, maxval = 20, group = grpSL,
-                tooltip = "Number of bars to look back for swing high/low detection")
-slBuffer = input.float(0.0, title = "SL Buffer (Points)", minval = 0, group = grpSL,
-           tooltip = "Additional buffer added to stop loss level")
+atrMultiplier = input.float(1.5, title = "ATR Multiplier", minval = 0.1, step = 0.1, group = grpSL, tooltip = "Multiplier for ATR-based stop loss")
+swingLookback = input.int(5, title = "Swing Lookback (Market Structure)", minval = 2, maxval = 20, group = grpSL, tooltip = "Number of bars to look back for swing high/low detection")
+slBuffer = input.float(0.0, title = "SL Buffer (Points)", minval = 0, group = grpSL, tooltip = "Additional buffer added to stop loss level")
 
 // ══════════════════════════════════════════════════════════════════════════════
 // TAKE PROFIT SETTINGS
 // ══════════════════════════════════════════════════════════════════════════════
 grpTP = "═══ Take Profit Settings ═══"
-tpType = input.string("1st Standard Deviation", title = "Take Profit Type", group = grpTP,
-         options = ["1st Standard Deviation", "2nd Standard Deviation", "Risk:Reward 1:1", "Risk:Reward 1:2", "Risk:Reward 1:3", "Custom R:R"],
-         tooltip = "Standard Deviation: Based on OR width\nRisk:Reward: Based on SL distance")
-sdMultiplier = input.float(1.0, title = "Standard Deviation Multiplier", minval = 0.5, step = 0.25, group = grpTP,
-               tooltip = "Multiplier for standard deviation targets (1.0 = 1 SD, 2.0 = 2 SD)")
-customRR = input.float(1.5, title = "Custom Risk:Reward Ratio", minval = 0.5, step = 0.1, group = grpTP,
-           tooltip = "Custom R:R ratio when 'Custom R:R' is selected")
-useTrailingTP = input.bool(false, title = "Use Trailing Stop at TP", group = grpTP,
-                tooltip = "When TP is hit, convert to trailing stop instead of closing")
-trailingPercent = input.float(50, title = "Trailing Stop % of Profit", minval = 10, maxval = 90, group = grpTP,
-                  tooltip = "Percentage of profit to trail when trailing stop is activated")
+tpType = input.string("1st Standard Deviation", title = "Take Profit Type", group = grpTP, options = ["1st Standard Deviation", "2nd Standard Deviation", "Risk:Reward 1:1", "Risk:Reward 1:2", "Risk:Reward 1:3", "Custom R:R"], tooltip = "Standard Deviation: Based on OR width\nRisk:Reward: Based on SL distance")
+sdMultiplier = input.float(1.0, title = "Standard Deviation Multiplier", minval = 0.5, step = 0.25, group = grpTP, tooltip = "Multiplier for standard deviation targets (1.0 = 1 SD, 2.0 = 2 SD)")
+customRR = input.float(1.5, title = "Custom Risk:Reward Ratio", minval = 0.5, step = 0.1, group = grpTP, tooltip = "Custom R:R ratio when 'Custom R:R' is selected")
+useTrailingTP = input.bool(false, title = "Use Trailing Stop at TP", group = grpTP, tooltip = "When TP is hit, convert to trailing stop instead of closing")
+trailingPercent = input.float(50, title = "Trailing Stop % of Profit", minval = 10, maxval = 90, group = grpTP, tooltip = "Percentage of profit to trail when trailing stop is activated")
 
 // ══════════════════════════════════════════════════════════════════════════════
 // FILTER SETTINGS
 // ══════════════════════════════════════════════════════════════════════════════
 grpFilter = "═══ Trade Filters ═══"
-useDirectionBias = input.bool(false, title = "Use Direction Bias", group = grpFilter,
-                   tooltip = "Only take trades in direction of previous day's OR midpoint comparison")
+useDirectionBias = input.bool(false, title = "Use Direction Bias", group = grpFilter, tooltip = "Only take trades in direction of previous day's OR midpoint comparison")
 useTrendFilter = input.bool(false, title = "Use EMA Trend Filter", group = grpFilter)
 emaPeriod = input.int(50, title = "EMA Period for Trend", minval = 10, group = grpFilter)
-minORSize = input.float(0, title = "Minimum OR Size (Points)", minval = 0, group = grpFilter,
-            tooltip = "Minimum Opening Range size required for trade entry")
-maxORSize = input.float(0, title = "Maximum OR Size (Points)", minval = 0, group = grpFilter,
-            tooltip = "Maximum Opening Range size allowed (0 = no limit)")
+minORSize = input.float(0, title = "Minimum OR Size (Points)", minval = 0, group = grpFilter, tooltip = "Minimum Opening Range size required for trade entry")
+maxORSize = input.float(0, title = "Maximum OR Size (Points)", minval = 0, group = grpFilter, tooltip = "Maximum Opening Range size allowed (0 = no limit)")
 
 // ══════════════════════════════════════════════════════════════════════════════
 // VISUAL SETTINGS
@@ -99,8 +75,7 @@ orLineColor = input.color(#787b86, title = "OR Lines Color", group = grpVisual)
 // ══════════════════════════════════════════════════════════════════════════════
 grpTime = "═══ Trading Hours ═══"
 useTimeFilter = input.bool(true, title = "Use Trading Hours Filter", group = grpTime)
-tradingStart = input.session("0945-1600", title = "Trading Session", group = grpTime,
-               tooltip = "Time window when trades are allowed (after OR period)")
+tradingStart = input.session("0945-1600", title = "Trading Session", group = grpTime, tooltip = "Time window when trades are allowed (after OR period)")
 closeEOD = input.bool(true, title = "Close Positions at End of Day", group = grpTime)
 eodTime = input.session("1555-1600", title = "EOD Close Time", group = grpTime)
 
@@ -159,23 +134,9 @@ atrValue = ta.atr(atrPeriod)
 // Calculate EMA for trend filter
 emaValue = ta.ema(close, emaPeriod)
 
-// Find swing high for market structure stop
-findSwingHigh(lookback) =>
-    var float swingH = na
-    for i = 1 to lookback
-        if high[i] >= ta.highest(high, lookback * 2 + 1)[i - lookback]
-            swingH := high[i]
-            break
-    swingH
-
-// Find swing low for market structure stop
-findSwingLow(lookback) =>
-    var float swingL = na
-    for i = 1 to lookback
-        if low[i] <= ta.lowest(low, lookback * 2 + 1)[i - lookback]
-            swingL := low[i]
-            break
-    swingL
+// Pre-calculate swing high/low values outside of functions (Pine Script requirement)
+swingHighValue = ta.highest(high, swingLookback)
+swingLowValue = ta.lowest(low, swingLookback)
 
 // Calculate stop loss based on selected type
 calcStopLoss(isLong, entry) =>
@@ -186,11 +147,9 @@ calcStopLoss(isLong, entry) =>
         sl := isLong ? entry - (atrValue * atrMultiplier) : entry + (atrValue * atrMultiplier)
     else if slType == "Market Structure"
         if isLong
-            swingLow = findSwingLow(swingLookback)
-            sl := na(swingLow) ? orLow : math.min(swingLow, orLow)
+            sl := na(swingLowValue) ? orLow : math.min(swingLowValue, orLow)
         else
-            swingHigh = findSwingHigh(swingLookback)
-            sl := na(swingHigh) ? orHigh : math.max(swingHigh, orHigh)
+            sl := na(swingHighValue) ? orHigh : math.max(swingHighValue, orHigh)
     // Add buffer
     sl := isLong ? sl - slBuffer : sl + slBuffer
     sl
@@ -302,12 +261,9 @@ if orEnd and orActive
         orLowLine := line.new(orStartBar, orLow, bar_index + 50, orLow, color = orLineColor, width = 2)
         orMidLine := line.new(orStartBar, orMid, bar_index + 50, orMid, color = orLineColor, width = 1, style = line.style_dashed)
         
-        orHighLabel := label.new(bar_index + 5, orHigh, "ORH: " + str.tostring(orHigh, format.mintick), 
-                       style = label.style_label_left, color = color.new(color.white, 100), textcolor = orLineColor, size = size.small)
-        orLowLabel := label.new(bar_index + 5, orLow, "ORL: " + str.tostring(orLow, format.mintick), 
-                      style = label.style_label_left, color = color.new(color.white, 100), textcolor = orLineColor, size = size.small)
-        orMidLabel := label.new(bar_index + 5, orMid, "ORM (50%): " + str.tostring(orMid, format.mintick), 
-                      style = label.style_label_left, color = color.new(color.white, 100), textcolor = orLineColor, size = size.small)
+        orHighLabel := label.new(bar_index + 5, orHigh, "ORH: " + str.tostring(orHigh, format.mintick), style = label.style_label_left, color = color.new(color.white, 100), textcolor = orLineColor, size = size.small)
+        orLowLabel := label.new(bar_index + 5, orLow, "ORL: " + str.tostring(orLow, format.mintick), style = label.style_label_left, color = color.new(color.white, 100), textcolor = orLineColor, size = size.small)
+        orMidLabel := label.new(bar_index + 5, orMid, "ORM (50%): " + str.tostring(orMid, format.mintick), style = label.style_label_left, color = color.new(color.white, 100), textcolor = orLineColor, size = size.small)
 
 // Extend OR lines
 if orComplete and showORLevels
@@ -330,11 +286,9 @@ if orComplete and showORLevels
 longBreakout = breakoutType == "Close Above/Below" ? breakoutClose > orHigh : breakoutHigh > orHigh
 shortBreakout = breakoutType == "Close Above/Below" ? breakoutClose < orLow : breakoutLow < orLow
 
-// Entry conditions
-canTradeLong = orComplete and allowLong and isTradingHours() and not isEODClose() and 
-               checkORSizeFilter() and checkDirectionBias(true) and checkTrendFilter(true)
-canTradeShort = orComplete and allowShort and isTradingHours() and not isEODClose() and 
-                checkORSizeFilter() and checkDirectionBias(false) and checkTrendFilter(false)
+// Entry conditions - all on single lines to avoid line continuation issues
+canTradeLong = orComplete and allowLong and isTradingHours() and not isEODClose() and checkORSizeFilter() and checkDirectionBias(true) and checkTrendFilter(true)
+canTradeShort = orComplete and allowShort and isTradingHours() and not isEODClose() and checkORSizeFilter() and checkDirectionBias(false) and checkTrendFilter(false)
 
 // Check if first breakout rule applies
 canEnterLong = canTradeLong and (onlyFirstBreakout ? not longTaken and not shortTaken : true)
@@ -437,7 +391,7 @@ alertcondition(orEnd, title = "Opening Range Complete", message = "Opening Range
 var table infoTable = table.new(position.top_right, 2, 10, bgcolor = color.new(color.black, 80), border_width = 1)
 
 if barstate.islast
-    table.cell(infoTable, 0, 0, "ORB Strategy Info", text_color = color.white, text_size = size.small)
+    table.cell(infoTable, 0, 0, "ORB Info", text_color = color.white, text_size = size.small)
     table.merge_cells(infoTable, 0, 0, 1, 0)
     
     table.cell(infoTable, 0, 1, "OR High:", text_color = color.gray, text_size = size.tiny)

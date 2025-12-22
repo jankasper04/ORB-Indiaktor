@@ -3,10 +3,7 @@
 // 15min Opening Range + 5min Candle Breakout with Multiple SL/TP Options
 
 //@version=6
-strategy("ORB Strategy Extended", shorttitle = "ORB Extended", overlay = true, 
-         initial_capital = 10000, default_qty_type = strategy.percent_of_equity, default_qty_value = 100,
-         pyramiding = 0, process_orders_on_close = false, calc_on_every_tick = true,
-         max_lines_count = 500, max_labels_count = 500, max_boxes_count = 100)
+strategy("ORB Strategy Extended", shorttitle = "ORB Ext", overlay = true, initial_capital = 10000, default_qty_type = strategy.percent_of_equity, default_qty_value = 100, pyramiding = 0, process_orders_on_close = false, calc_on_every_tick = true, max_lines_count = 500, max_labels_count = 500, max_boxes_count = 100)
 
 //=====================================================================================================================
 // STRATEGIE BESCHREIBUNG (DEUTSCH)
@@ -33,13 +30,9 @@ strategy("ORB Strategy Extended", shorttitle = "ORB Extended", overlay = true,
 // OPENING RANGE EINSTELLUNGEN
 // ══════════════════════════════════════════════════════════════════════════════
 grpOR = "═══ Opening Range (OR) ═══"
-i_orMinutes = input.int(15, title = "OR Periode (Minuten)", minval = 5, maxval = 120, step = 5, group = grpOR, 
-              tooltip = "Dauer der Opening Range in Minuten.\nStandard: 15 Minuten\nTypische Werte: 5, 15, 30, 60")
-i_orSessionStart = input.int(930, title = "OR Start Zeit (HHMM)", minval = 0, maxval = 2359, group = grpOR,
-                   tooltip = "Startzeit der Opening Range im Format HHMM\nBeispiel: 930 = 9:30 Uhr")
-i_timezone = input.string("America/New_York", title = "Zeitzone", group = grpOR,
-             options = ["America/New_York", "America/Chicago", "America/Los_Angeles", "Europe/London", "Europe/Berlin", "Europe/Zurich", "Asia/Tokyo", "Asia/Hong_Kong", "Asia/Singapore", "Australia/Sydney"],
-             tooltip = "Zeitzone für die OR Berechnung\nUS Märkte: America/New_York\nEuropa: Europe/London oder Europe/Berlin")
+i_orMinutes = input.int(15, title = "OR Periode (Minuten)", minval = 5, maxval = 120, step = 5, group = grpOR, tooltip = "Dauer der Opening Range in Minuten.\nStandard: 15 Minuten\nTypische Werte: 5, 15, 30, 60")
+i_orSessionStart = input.int(930, title = "OR Start Zeit (HHMM)", minval = 0, maxval = 2359, group = grpOR, tooltip = "Startzeit der Opening Range im Format HHMM\nBeispiel: 930 = 9:30 Uhr")
+i_timezone = input.string("America/New_York", title = "Zeitzone", group = grpOR, options = ["America/New_York", "America/Chicago", "America/Los_Angeles", "Europe/London", "Europe/Berlin", "Europe/Zurich", "Asia/Tokyo", "Asia/Hong_Kong", "Asia/Singapore", "Australia/Sydney"], tooltip = "Zeitzone für die OR Berechnung\nUS Märkte: America/New_York\nEuropa: Europe/London oder Europe/Berlin")
 i_useCustomSession = input.bool(false, title = "Benutzerdefinierte Session verwenden", group = grpOR)
 i_customSession = input.session("0930-0945", title = "Custom Session", group = grpOR)
 
@@ -47,78 +40,54 @@ i_customSession = input.session("0930-0945", title = "Custom Session", group = g
 // BREAKOUT EINSTELLUNGEN
 // ══════════════════════════════════════════════════════════════════════════════
 grpBreak = "═══ Breakout Einstellungen ═══"
-i_breakoutTF = input.timeframe("5", title = "Breakout Kerzen Timeframe", group = grpBreak,
-               tooltip = "Timeframe für Breakout Bestätigung\nStandard: 5 Minuten")
-i_breakoutConfirm = input.string("Kerzen Close", title = "Breakout Bestätigung", group = grpBreak,
-                    options = ["Kerzen Close", "Kerzen High/Low", "Beide Bedingungen"],
-                    tooltip = "Kerzen Close: Preis muss über/unter OR Level schließen\nKerzen High/Low: High/Low muss OR Level durchbrechen\nBeide: Close UND High/Low müssen bestätigen")
-i_waitForRetest = input.bool(false, title = "Auf Retest warten", group = grpBreak,
-                  tooltip = "Wenn aktiviert, wartet die Strategie auf einen Retest des OR Levels vor Entry")
+i_breakoutTF = input.timeframe("5", title = "Breakout Kerzen Timeframe", group = grpBreak, tooltip = "Timeframe für Breakout Bestätigung\nStandard: 5 Minuten")
+i_breakoutConfirm = input.string("Kerzen Close", title = "Breakout Bestätigung", group = grpBreak, options = ["Kerzen Close", "Kerzen High/Low", "Beide Bedingungen"], tooltip = "Kerzen Close: Preis muss über/unter OR Level schließen\nKerzen High/Low: High/Low muss OR Level durchbrechen\nBeide: Close UND High/Low müssen bestätigen")
+i_waitForRetest = input.bool(false, title = "Auf Retest warten", group = grpBreak, tooltip = "Wenn aktiviert, wartet die Strategie auf einen Retest des OR Levels vor Entry")
 i_retestBars = input.int(3, title = "Max. Kerzen für Retest", minval = 1, maxval = 10, group = grpBreak)
 i_allowLong = input.bool(true, title = "Long Trades erlauben", inline = "dir", group = grpBreak)
 i_allowShort = input.bool(true, title = "Short Trades erlauben", inline = "dir", group = grpBreak)
-i_onlyFirst = input.bool(true, title = "Nur erster Breakout pro Session", group = grpBreak,
-              tooltip = "Wenn aktiviert, wird nur das erste Breakout Signal pro Tag gehandelt")
+i_onlyFirst = input.bool(true, title = "Nur erster Breakout pro Session", group = grpBreak, tooltip = "Wenn aktiviert, wird nur das erste Breakout Signal pro Tag gehandelt")
 
 // ══════════════════════════════════════════════════════════════════════════════
 // STOP LOSS EINSTELLUNGEN
 // ══════════════════════════════════════════════════════════════════════════════
 grpSL = "═══ Stop Loss (SL) ═══"
-i_slType = input.string("50% Level (ORM)", title = "Stop Loss Typ", group = grpSL,
-           options = ["50% Level (ORM)", "OR Gegenseite", "ATR Basiert", "Market Structure", "Fester Prozentsatz"],
-           tooltip = "50% Level: Stop an der Mitte der OR\nOR Gegenseite: Stop am anderen Ende der OR\nATR Basiert: Stop basierend auf ATR\nMarket Structure: Stop am Swing High/Low\nFester %: Fester Prozentsatz vom Entry")
+i_slType = input.string("50% Level (ORM)", title = "Stop Loss Typ", group = grpSL, options = ["50% Level (ORM)", "OR Gegenseite", "ATR Basiert", "Market Structure", "Fester Prozentsatz"], tooltip = "50% Level: Stop an der Mitte der OR\nOR Gegenseite: Stop am anderen Ende der OR\nATR Basiert: Stop basierend auf ATR\nMarket Structure: Stop am Swing High/Low\nFester %: Fester Prozentsatz vom Entry")
 i_atrPeriod = input.int(14, title = "ATR Periode", minval = 1, maxval = 50, group = grpSL)
-i_atrMult = input.float(1.5, title = "ATR Multiplikator", minval = 0.5, maxval = 5.0, step = 0.1, group = grpSL,
-            tooltip = "Multiplikator für ATR-basierten Stop Loss")
-i_swingLookback = input.int(5, title = "Swing Lookback (Kerzen)", minval = 2, maxval = 20, group = grpSL,
-                  tooltip = "Anzahl der Kerzen für Swing High/Low Erkennung")
-i_fixedSLPercent = input.float(1.0, title = "Fester SL Prozentsatz", minval = 0.1, maxval = 10.0, step = 0.1, group = grpSL,
-                   tooltip = "Fester Stop Loss in Prozent vom Entry Preis")
-i_slBuffer = input.float(0.0, title = "SL Buffer (Ticks)", minval = 0, step = 1, group = grpSL,
-             tooltip = "Zusätzlicher Puffer zum Stop Loss Level")
+i_atrMult = input.float(1.5, title = "ATR Multiplikator", minval = 0.5, maxval = 5.0, step = 0.1, group = grpSL, tooltip = "Multiplikator für ATR-basierten Stop Loss")
+i_swingLookback = input.int(5, title = "Swing Lookback (Kerzen)", minval = 2, maxval = 20, group = grpSL, tooltip = "Anzahl der Kerzen für Swing High/Low Erkennung")
+i_fixedSLPercent = input.float(1.0, title = "Fester SL Prozentsatz", minval = 0.1, maxval = 10.0, step = 0.1, group = grpSL, tooltip = "Fester Stop Loss in Prozent vom Entry Preis")
+i_slBuffer = input.float(0.0, title = "SL Buffer (Ticks)", minval = 0, step = 1, group = grpSL, tooltip = "Zusätzlicher Puffer zum Stop Loss Level")
 
 // ══════════════════════════════════════════════════════════════════════════════
 // TAKE PROFIT EINSTELLUNGEN
 // ══════════════════════════════════════════════════════════════════════════════
 grpTP = "═══ Take Profit (TP) ═══"
-i_tpType = input.string("1. Standard Deviation", title = "Take Profit Typ", group = grpTP,
-           options = ["1. Standard Deviation", "2. Standard Deviation", "Custom SD", "Risk:Reward 1:1", "Risk:Reward 1:2", "Risk:Reward 1:3", "Custom R:R", "Fester Prozentsatz", "ATR Basiert"],
-           tooltip = "Standard Deviation: Basierend auf OR Breite\nRisk:Reward: Basierend auf SL Distanz")
-i_sdMult = input.float(1.0, title = "SD Multiplikator", minval = 0.5, maxval = 5.0, step = 0.25, group = grpTP,
-           tooltip = "Multiplikator für Standard Deviation Targets\n1.0 = 1 SD (100% der OR Breite)\n2.0 = 2 SD (200% der OR Breite)")
-i_customRR = input.float(1.5, title = "Custom R:R Verhältnis", minval = 0.5, maxval = 10.0, step = 0.1, group = grpTP,
-             tooltip = "Benutzerdefiniertes Risk:Reward Verhältnis")
-i_fixedTPPercent = input.float(2.0, title = "Fester TP Prozentsatz", minval = 0.1, maxval = 20.0, step = 0.1, group = grpTP,
-                   tooltip = "Fester Take Profit in Prozent vom Entry Preis")
+i_tpType = input.string("1. Standard Deviation", title = "Take Profit Typ", group = grpTP, options = ["1. Standard Deviation", "2. Standard Deviation", "Custom SD", "Risk:Reward 1:1", "Risk:Reward 1:2", "Risk:Reward 1:3", "Custom R:R", "Fester Prozentsatz", "ATR Basiert"], tooltip = "Standard Deviation: Basierend auf OR Breite\nRisk:Reward: Basierend auf SL Distanz")
+i_sdMult = input.float(1.0, title = "SD Multiplikator", minval = 0.5, maxval = 5.0, step = 0.25, group = grpTP, tooltip = "Multiplikator für Standard Deviation Targets\n1.0 = 1 SD (100% der OR Breite)\n2.0 = 2 SD (200% der OR Breite)")
+i_customRR = input.float(1.5, title = "Custom R:R Verhältnis", minval = 0.5, maxval = 10.0, step = 0.1, group = grpTP, tooltip = "Benutzerdefiniertes Risk:Reward Verhältnis")
+i_fixedTPPercent = input.float(2.0, title = "Fester TP Prozentsatz", minval = 0.1, maxval = 20.0, step = 0.1, group = grpTP, tooltip = "Fester Take Profit in Prozent vom Entry Preis")
 i_tpAtrMult = input.float(2.0, title = "TP ATR Multiplikator", minval = 1.0, maxval = 10.0, step = 0.5, group = grpTP)
 
 // Partial Take Profit
 grpPartialTP = "═══ Partial Take Profit ═══"
-i_usePartialTP = input.bool(false, title = "Partial TP verwenden", group = grpPartialTP,
-                 tooltip = "Wenn aktiviert, wird ein Teil der Position am ersten Target geschlossen")
-i_partialPercent = input.float(50, title = "Partial TP Prozent (%)", minval = 10, maxval = 90, step = 10, group = grpPartialTP,
-                   tooltip = "Prozent der Position, die am ersten Target geschlossen wird")
-i_partialTarget = input.string("1. Standard Deviation", title = "Partial TP Target", group = grpPartialTP,
-                  options = ["1. Standard Deviation", "Risk:Reward 1:1", "50% zum Haupt-TP"],
-                  tooltip = "Target Level für partial take profit")
+i_usePartialTP = input.bool(false, title = "Partial TP verwenden", group = grpPartialTP, tooltip = "Wenn aktiviert, wird ein Teil der Position am ersten Target geschlossen")
+i_partialPercent = input.float(50, title = "Partial TP Prozent (%)", minval = 10, maxval = 90, step = 10, group = grpPartialTP, tooltip = "Prozent der Position, die am ersten Target geschlossen wird")
+i_partialTarget = input.string("1. Standard Deviation", title = "Partial TP Target", group = grpPartialTP, options = ["1. Standard Deviation", "Risk:Reward 1:1", "50% zum Haupt-TP"], tooltip = "Target Level für partial take profit")
 i_moveSlToBreakeven = input.bool(true, title = "SL auf Breakeven nach Partial TP", group = grpPartialTP)
 
 // ══════════════════════════════════════════════════════════════════════════════
 // FILTER EINSTELLUNGEN
 // ══════════════════════════════════════════════════════════════════════════════
 grpFilter = "═══ Trade Filter ═══"
-i_useBias = input.bool(false, title = "Direction Bias verwenden", group = grpFilter,
-            tooltip = "Nur Trades in Richtung des vorherigen OR Midpoint Vergleichs")
+i_useBias = input.bool(false, title = "Direction Bias verwenden", group = grpFilter, tooltip = "Nur Trades in Richtung des vorherigen OR Midpoint Vergleichs")
 i_useTrendFilter = input.bool(false, title = "EMA Trend Filter", group = grpFilter)
 i_emaPeriod = input.int(50, title = "EMA Periode", minval = 10, maxval = 200, group = grpFilter)
-i_useVolumeFilter = input.bool(false, title = "Volumen Filter", group = grpFilter,
-                    tooltip = "Nur Trades wenn Breakout Volumen über Durchschnitt")
+i_useVolumeFilter = input.bool(false, title = "Volumen Filter", group = grpFilter, tooltip = "Nur Trades wenn Breakout Volumen über Durchschnitt")
 i_volumePeriod = input.int(20, title = "Volumen MA Periode", minval = 5, maxval = 100, group = grpFilter)
 i_volumeMult = input.float(1.5, title = "Volumen Multiplikator", minval = 1.0, maxval = 5.0, step = 0.1, group = grpFilter)
-i_minORSize = input.float(0, title = "Min. OR Größe (Punkte)", minval = 0, group = grpFilter,
-              tooltip = "Minimale OR Breite für Trade Entry (0 = kein Filter)")
-i_maxORSize = input.float(0, title = "Max. OR Größe (Punkte)", minval = 0, group = grpFilter,
-              tooltip = "Maximale OR Breite erlaubt (0 = kein Limit)")
+i_minORSize = input.float(0, title = "Min. OR Größe (Punkte)", minval = 0, group = grpFilter, tooltip = "Minimale OR Breite für Trade Entry (0 = kein Filter)")
+i_maxORSize = input.float(0, title = "Max. OR Größe (Punkte)", minval = 0, group = grpFilter, tooltip = "Maximale OR Breite erlaubt (0 = kein Limit)")
 
 // ══════════════════════════════════════════════════════════════════════════════
 // ZEIT EINSTELLUNGEN
@@ -250,13 +219,9 @@ emaValue = ta.ema(close, i_emaPeriod)
 // Volumen MA
 volumeMA = ta.sma(volume, i_volumePeriod)
 
-// Swing High finden
-findSwingHigh(lb) =>
-    ta.pivothigh(high, lb, lb)
-
-// Swing Low finden
-findSwingLow(lb) =>
-    ta.pivotlow(low, lb, lb)
+// Pre-calculate swing high/low values outside of functions (Pine Script requirement)
+swingHighValue = ta.highest(high, i_swingLookback)
+swingLowValue = ta.lowest(low, i_swingLookback)
 
 // Stop Loss berechnen
 calcSL(isLong, entry) =>
@@ -269,11 +234,9 @@ calcSL(isLong, entry) =>
         "ATR Basiert" => sl := isLong ? entry - (atrValue * i_atrMult) : entry + (atrValue * i_atrMult)
         "Market Structure" =>
             if isLong
-                swLow = ta.lowest(low, i_swingLookback)
-                sl := math.min(swLow, orLow)
+                sl := math.min(swingLowValue, orLow)
             else
-                swHigh = ta.highest(high, i_swingLookback)
-                sl := math.max(swHigh, orHigh)
+                sl := math.max(swingHighValue, orHigh)
         "Fester Prozentsatz" => sl := isLong ? entry * (1 - i_fixedSLPercent / 100) : entry * (1 + i_fixedSLPercent / 100)
     
     // Buffer hinzufügen
@@ -437,12 +400,9 @@ if orEnd and orActive
         orMidLine := line.new(orStartBar, orMid, bar_index + extendBars, orMid, color = biasColor, width = 1, style = line.style_dashed)
         
         if i_showLabels
-            orHighLabel := label.new(bar_index + 5, orHigh, "ORH: " + str.tostring(orHigh, format.mintick), 
-                           style = label.style_label_left, color = invis, textcolor = i_orColor, size = size.small)
-            orLowLabel := label.new(bar_index + 5, orLow, "ORL: " + str.tostring(orLow, format.mintick), 
-                          style = label.style_label_left, color = invis, textcolor = i_orColor, size = size.small)
-            orMidLabel := label.new(bar_index + 5, orMid, "ORM (50%): " + str.tostring(orMid, format.mintick), 
-                          style = label.style_label_left, color = invis, textcolor = biasColor, size = size.small)
+            orHighLabel := label.new(bar_index + 5, orHigh, "ORH: " + str.tostring(orHigh, format.mintick), style = label.style_label_left, color = invis, textcolor = i_orColor, size = size.small)
+            orLowLabel := label.new(bar_index + 5, orLow, "ORL: " + str.tostring(orLow, format.mintick), style = label.style_label_left, color = invis, textcolor = i_orColor, size = size.small)
+            orMidLabel := label.new(bar_index + 5, orMid, "ORM (50%): " + str.tostring(orMid, format.mintick), style = label.style_label_left, color = invis, textcolor = biasColor, size = size.small)
 
 // OR Linien erweitern
 if orComplete and i_showORLevels and i_extendLines
@@ -486,15 +446,11 @@ shortBreakout = switch i_breakoutConfirm
 // Zeit und Tag Filter
 canTrade = isTradingTime() and not isEOD() and not (i_noFriday and isFriday())
 
-// Long Entry Bedingungen
-canLong = orComplete and i_allowLong and canTrade and 
-          allFiltersPass(true) and 
-          (i_onlyFirst ? not longTaken and not shortTaken : true)
+// Long Entry Bedingungen - all conditions on single line
+canLong = orComplete and i_allowLong and canTrade and allFiltersPass(true) and (i_onlyFirst ? not longTaken and not shortTaken : true)
 
-// Short Entry Bedingungen
-canShort = orComplete and i_allowShort and canTrade and 
-           allFiltersPass(false) and 
-           (i_onlyFirst ? not shortTaken and not longTaken : true)
+// Short Entry Bedingungen - all conditions on single line
+canShort = orComplete and i_allowShort and canTrade and allFiltersPass(false) and (i_onlyFirst ? not shortTaken and not longTaken : true)
 
 // Entry Signale
 longSignal = longBreakout and canLong and strategy.position_size == 0
@@ -527,20 +483,17 @@ if longSignal
     if i_showSL
         slLine := line.new(bar_index, stopLossLevel, bar_index + 30, stopLossLevel, color = i_bearColor, width = 2, style = line.style_dotted)
         if i_showLabels
-            slLabel := label.new(bar_index + 15, stopLossLevel, "SL: " + str.tostring(stopLossLevel, format.mintick), 
-                       style = label.style_label_left, color = invis, textcolor = i_bearColor, size = size.tiny)
+            slLabel := label.new(bar_index + 15, stopLossLevel, "SL: " + str.tostring(stopLossLevel, format.mintick), style = label.style_label_left, color = invis, textcolor = i_bearColor, size = size.tiny)
     if i_showTargets
         tpLine := line.new(bar_index, takeProfitLevel, bar_index + 30, takeProfitLevel, color = i_bullColor, width = 2, style = line.style_dotted)
         if i_usePartialTP and not na(partialTPLevel)
             partialTPLine := line.new(bar_index, partialTPLevel, bar_index + 30, partialTPLevel, color = color.new(i_bullColor, 30), width = 1, style = line.style_dotted)
         if i_showLabels
-            tpLabel := label.new(bar_index + 15, takeProfitLevel, "TP: " + str.tostring(takeProfitLevel, format.mintick), 
-                       style = label.style_label_left, color = invis, textcolor = i_bullColor, size = size.tiny)
+            tpLabel := label.new(bar_index + 15, takeProfitLevel, "TP: " + str.tostring(takeProfitLevel, format.mintick), style = label.style_label_left, color = invis, textcolor = i_bullColor, size = size.tiny)
     
     entryLine := line.new(bar_index, entryPrice, bar_index + 30, entryPrice, color = color.blue, width = 1)
     if i_showLabels
-        entryLabel := label.new(bar_index + 15, entryPrice, "Entry: " + str.tostring(entryPrice, format.mintick), 
-                      style = label.style_label_left, color = invis, textcolor = color.blue, size = size.tiny)
+        entryLabel := label.new(bar_index + 15, entryPrice, "Entry: " + str.tostring(entryPrice, format.mintick), style = label.style_label_left, color = invis, textcolor = color.blue, size = size.tiny)
 
 // Short Entry
 if shortSignal
@@ -565,20 +518,17 @@ if shortSignal
     if i_showSL
         slLine := line.new(bar_index, stopLossLevel, bar_index + 30, stopLossLevel, color = i_bearColor, width = 2, style = line.style_dotted)
         if i_showLabels
-            slLabel := label.new(bar_index + 15, stopLossLevel, "SL: " + str.tostring(stopLossLevel, format.mintick), 
-                       style = label.style_label_left, color = invis, textcolor = i_bearColor, size = size.tiny)
+            slLabel := label.new(bar_index + 15, stopLossLevel, "SL: " + str.tostring(stopLossLevel, format.mintick), style = label.style_label_left, color = invis, textcolor = i_bearColor, size = size.tiny)
     if i_showTargets
         tpLine := line.new(bar_index, takeProfitLevel, bar_index + 30, takeProfitLevel, color = i_bullColor, width = 2, style = line.style_dotted)
         if i_usePartialTP and not na(partialTPLevel)
             partialTPLine := line.new(bar_index, partialTPLevel, bar_index + 30, partialTPLevel, color = color.new(i_bullColor, 30), width = 1, style = line.style_dotted)
         if i_showLabels
-            tpLabel := label.new(bar_index + 15, takeProfitLevel, "TP: " + str.tostring(takeProfitLevel, format.mintick), 
-                       style = label.style_label_left, color = invis, textcolor = i_bullColor, size = size.tiny)
+            tpLabel := label.new(bar_index + 15, takeProfitLevel, "TP: " + str.tostring(takeProfitLevel, format.mintick), style = label.style_label_left, color = invis, textcolor = i_bullColor, size = size.tiny)
     
     entryLine := line.new(bar_index, entryPrice, bar_index + 30, entryPrice, color = color.blue, width = 1)
     if i_showLabels
-        entryLabel := label.new(bar_index + 15, entryPrice, "Entry: " + str.tostring(entryPrice, format.mintick), 
-                      style = label.style_label_left, color = invis, textcolor = color.blue, size = size.tiny)
+        entryLabel := label.new(bar_index + 15, entryPrice, "Entry: " + str.tostring(entryPrice, format.mintick), style = label.style_label_left, color = invis, textcolor = color.blue, size = size.tiny)
 
 // EOD Close
 if isEOD() and strategy.position_size != 0
